@@ -6616,7 +6616,10 @@ export default function App() {
                       const { prodId, code } = deletePlanModal;
                       setMonthlyPlan((prev) => {
                         const next = { ...prev };
-                        delete next[prodId];
+                        if (next[currentYearMonth]) {
+                          next[currentYearMonth] = { ...next[currentYearMonth] };
+                          delete next[currentYearMonth][prodId];
+                        }
                         return next;
                       });
                       setFormMessage(`❌ Đã loại bỏ mã hàng ${code} khỏi bảng Kế hoạch tháng.`);
@@ -6640,7 +6643,12 @@ export default function App() {
                       const { prodId, code } = deletePlanModal;
                       setMonthlyPlan((prev) => {
                         const next = { ...prev };
-                        next[prodId] = {};
+                        if (!next[currentYearMonth]) {
+                          next[currentYearMonth] = {};
+                        } else {
+                          next[currentYearMonth] = { ...next[currentYearMonth] };
+                        }
+                        next[currentYearMonth][prodId] = {};
                         return next;
                       });
                       setFormMessage(`✅ Đã xóa trắng toàn bộ kế hoạch ngày của mã hàng ${code}`);
