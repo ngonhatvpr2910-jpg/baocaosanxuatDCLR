@@ -1,0 +1,6 @@
+{
+  "name": "Quản Lý Sản Xuất Máy Lọc Nước & Bếp Gas",
+  "description": "Hệ thống quản lý sản xuất, lập kế hoạch, theo dõi năng suất lao động và phân tích hiệu suất bằng trí tuệ nhân tạo (AI) dành cho ngành sản xuất máy lọc nước và bếp gas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
