@@ -212,8 +212,21 @@ export const SUNHOUSE_LINES: ProductionLine[] = [
 // Số liệu gốc 2025 từ bảng Excel
 export const HISTORICAL_2025: MonthlyMetric[] = Array.from({ length: 12 }).map((_, i) => ({ year: 2025, month: i + 1, laborProductivityPercent: null, productionMandays: null, equivalentProducts: null, attendanceRatePercent: null }));
 
-// Số liệu gốc 2026 từ bảng Excel (cho đến tháng 6 hiện tại)
-export const HISTORICAL_2026: MonthlyMetric[] = Array.from({ length: 12 }).map((_, i) => ({ year: 2026, month: i + 1, laborProductivityPercent: null, productionMandays: null, equivalentProducts: null, attendanceRatePercent: null }));
+// Số liệu gốc 2026 từ bảng Excel (cho đến tháng 8 hiện tại)
+export const HISTORICAL_2026: MonthlyMetric[] = [
+  { year: 2026, month: 1, laborProductivityPercent: 96.18, productionMandays: 1473, equivalentProducts: 12794, actualProducts: 5669, attendanceRatePercent: null },
+  { year: 2026, month: 2, laborProductivityPercent: 94.56, productionMandays: 1550, equivalentProducts: 13236, actualProducts: 10807, attendanceRatePercent: null },
+  { year: 2026, month: 3, laborProductivityPercent: 91.99, productionMandays: 2197.5, equivalentProducts: 18254, actualProducts: 17890, attendanceRatePercent: null },
+  { year: 2026, month: 4, laborProductivityPercent: 109.89, productionMandays: 1935.6, equivalentProducts: 19206, actualProducts: 16093, attendanceRatePercent: null },
+  { year: 2026, month: 5, laborProductivityPercent: 98.61, productionMandays: 1490.8, equivalentProducts: 13274, actualProducts: 9303, attendanceRatePercent: null },
+  { year: 2026, month: 6, laborProductivityPercent: 135.84, productionMandays: 1699.73, equivalentProducts: 20850, actualProducts: 15414, attendanceRatePercent: null },
+  { year: 2026, month: 7, laborProductivityPercent: 103.04, productionMandays: 2224.41, equivalentProducts: 20698, actualProducts: 16315, attendanceRatePercent: null },
+  { year: 2026, month: 8, laborProductivityPercent: 110.15, productionMandays: 1178.125, equivalentProducts: 11718, actualProducts: 9653, attendanceRatePercent: null },
+  { year: 2026, month: 9, laborProductivityPercent: null, productionMandays: null, equivalentProducts: null, attendanceRatePercent: null },
+  { year: 2026, month: 10, laborProductivityPercent: null, productionMandays: null, equivalentProducts: null, attendanceRatePercent: null },
+  { year: 2026, month: 11, laborProductivityPercent: null, productionMandays: null, equivalentProducts: null, attendanceRatePercent: null },
+  { year: 2026, month: 12, laborProductivityPercent: null, productionMandays: null, equivalentProducts: null, attendanceRatePercent: null },
+];
 
 // So sánh mục tiêu tháng 6/2026 (Thực hiện so với kế hoạch và lũy kế)
 export const CURRENT_STATE_SUMMARY: TargetComparison = {
