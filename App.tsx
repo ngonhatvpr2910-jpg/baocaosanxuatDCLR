@@ -1146,7 +1146,9 @@ export default function App() {
       formModelItems.forEach(item => {
         const p = products.find(x => x.id === item.productId) || products[0];
         if (!p) return;
-        if (p.group === "MLN") {
+        if (p.group === "RMA") {
+          sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+        } else if (p.group === "MLN") {
           // Check for RMA keyword in name or code
           const isRMA = p.name.toLowerCase().includes("rma") || p.code.toLowerCase().includes("rma") || p.id.toLowerCase().includes("rma");
           if (isRMA) {
@@ -1391,7 +1393,14 @@ export default function App() {
       const remaining = Math.max(0, (item.dailyPlan || 0) + leftover - modelActual);
       totalRemainingQty += remaining;
 
-      if (prodDef.group === "RMA") {
+      const isRMA = prodDef.group === "RMA" || 
+                    (prodDef.group === "MLN" && (
+                      prodDef.name.toLowerCase().includes("rma") || 
+                      prodDef.code.toLowerCase().includes("rma") || 
+                      prodDef.id.toLowerCase().includes("rma")
+                    ));
+
+      if (isRMA) {
         totalActualQtyRMA += modelActual;
         totalEqQtyRMA += modelEq;
         totalPlanQtyRMA += (item.dailyPlan || 0);
@@ -1649,23 +1658,22 @@ export default function App() {
             if (filterDivision === "ALL") {
               return m; // Already computed dynamically in processedMetrics2026
             } else if (filterDivision === "BG") {
-              const eq = gasMonthDays.reduce((sum, r) => sum + (Number(r.outputStove || 0) + Number(r.outputRma || 0)), 0);
-              const actual = gasMonthDays.reduce((sum, r) => sum + (Number(r.actualStove || 0) + Number(r.actualRma || 0)), 0);
-              const mandays = gasMonthDays.reduce((sum, r) => sum + (Number(r.congGasStove || 0) + Number(r.congSeasonal || 0) + Number(r.congRma || 0)), 0);
-              const lp = mandays > 0 ? Number(((eq / mandays) / 9.03 * 100).toFixed(2)) : null;
+              const eq = gasMonthDays.reduce((sum, r) => sum + Number(r.outputStove || 0), 0);
+              const actual = gasMonthDays.reduce((sum, r) => sum + Number(r.actualStove || 0), 0);
+              const mandays = gasMonthDays.reduce((sum, r) => sum + (Number(r.congGasStove || 0) + Number(r.congSeasonal || 0)), 0);
+              const lp = mandays > 0 ? Number(((eq / mandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : null;
               return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
             } else if (filterDivision === "MLN") {
               const eq = assemMonthDays.reduce((sum, r) => sum + Number(r.outputLineChinh || 0), 0);
               const actual = assemMonthDays.reduce((sum, r) => sum + Number(r.actualLineChinh || 0), 0);
               const mandays = assemMonthDays.reduce((sum, r) => sum + (Number(r.congChinhThuc || 0) + Number(r.congThoiVu || 0)), 0);
-              const lp = mandays > 0 ? Number(((eq / mandays) / 9.03 * 100).toFixed(2)) : null;
+              const lp = mandays > 0 ? Number(((eq / mandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : null;
               return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
             } else if (filterDivision === "RMA") {
-              // Simulated historical for RMA
-              const eq = Math.round(assemMonthDays.reduce((sum, r) => sum + Number(r.outputLineChinh || 0), 0) * 0.1);
-              const actual = Math.round(assemMonthDays.reduce((sum, r) => sum + Number(r.actualLineChinh || 0), 0) * 0.1);
-              const mandays = Math.round(assemMonthDays.reduce((sum, r) => sum + (Number(r.congChinhThuc || 0) + Number(r.congThoiVu || 0)), 0) * 0.1);
-              const lp = mandays > 0 ? Number(((eq / mandays) / 9.03 * 100).toFixed(2)) : null;
+              const eq = gasMonthDays.reduce((sum, r) => sum + Number(r.outputRma || 0), 0);
+              const actual = gasMonthDays.reduce((sum, r) => sum + Number(r.actualRma || 0), 0);
+              const mandays = gasMonthDays.reduce((sum, r) => sum + Number(r.congRma || 0), 0);
+              const lp = mandays > 0 ? Number(((eq / mandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : (m.month <= 6 ? 100 : null);
               return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
             }
           }
@@ -2231,6 +2239,37 @@ export default function App() {
       : 110;
     const yearTarget = 110;
 
+    // Combined BG + RMA metrics for DCRMA Dashboard
+    let combinedBgRmaEq = 0;
+    let combinedBgRmaMandays = 0;
+    
+    const logsBgRma = productionLogs.filter(log => 
+      log.date.startsWith(monthPrefix) && (log.productGroup === "BG" || log.productGroup === "RMA")
+    );
+    const filteredLogsBgRma = hasSavedFormDate
+      ? logsBgRma
+      : logsBgRma.filter(log => log.date !== formDate);
+      
+    combinedBgRmaEq = filteredLogsBgRma.reduce((sum, log) => sum + log.equivalentProducts, 0);
+    
+    const uniqueShiftMapBgRma: { [key: string]: number } = {};
+    filteredLogsBgRma.forEach(log => {
+      const key = `${log.date}_${log.shift}_${log.lineId}`;
+      if (!uniqueShiftMapBgRma[key] || log.workersCount > uniqueShiftMapBgRma[key]) {
+        uniqueShiftMapBgRma[key] = log.workersCount;
+      }
+    });
+    combinedBgRmaMandays = Object.values(uniqueShiftMapBgRma).reduce((acc, v) => acc + v, 0);
+    
+    if (!hasSavedFormDate) {
+      combinedBgRmaEq += (formAggregates.totalEqQtyBG + formAggregates.totalEqQtyRMA);
+      combinedBgRmaMandays += (formWorkersCountBG + formWorkersCountRMA);
+    }
+    
+    const combinedBgRmaLp = combinedBgRmaMandays > 0 
+      ? Number(((combinedBgRmaEq / combinedBgRmaMandays / 9.03) * 100).toFixed(1))
+      : 0;
+
     return {
       totalEqProducts,
       totalMandays,
@@ -2246,6 +2285,9 @@ export default function App() {
       actualRevenue: finalActualRevenue,
       monthTarget,
       yearTarget,
+      combinedBgRmaLp,
+      combinedBgRmaEq,
+      combinedBgRmaMandays
     };
   }, [selectedYear, processedMetrics2026, metrics2025, filterDivision, productionLogs, monthlyPlan, products, formDate, formAggregates, formWorkersCount, totalMonthlyPlanUnits, formOfficialCountRO, formOfficialCountBG, formSeasonalCountRO, formSeasonalCountBG, formWorkersCountRO, formWorkersCountBG, formModelItems]);
 
@@ -2525,7 +2567,9 @@ export default function App() {
       formModelItems.forEach(item => {
         const p = products.find(x => x.id === item.productId) || products[0];
         if (!p) return;
-        if (p.group === "MLN") {
+        if (p.group === "RMA") {
+          sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+        } else if (p.group === "MLN") {
           const isRMA = p.name.toLowerCase().includes("rma") || p.code.toLowerCase().includes("rma") || p.id.toLowerCase().includes("rma");
           if (isRMA) {
             sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
@@ -4193,65 +4237,105 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* CARD 3: BÁO CÁO DOANH THU */}
-                <div id="card-revenue" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-600/5 rounded-full blur-xl group-hover:bg-emerald-600/10 transition-all"></div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider">DOANH THU (KH VS THỰC)</span>
-                    {isRevenueVisible ? (
-                      <button onClick={() => {
-                        setIsRevenueVisible(false);
-                        setIsPasswordInputVisible(false);
-                      }} className="cursor-pointer border-0 bg-transparent text-emerald-400 hover:text-emerald-300 transition-colors" title="Khóa bảng doanh thu">
-                        <Unlock className="w-4 h-4" />
-                      </button>
-                    ) : (
-                      <button onClick={() => {
-                        setIsPasswordInputVisible(!isPasswordInputVisible);
-                        setPasswordInput("");
-                      }} className="cursor-pointer border-0 bg-transparent text-slate-500 hover:text-emerald-400 transition-colors" title="Mở khóa bảng doanh thu">
-                        <Lock className="w-4 h-4" />
-                      </button>
-                    )}
+                {/* CARD 3: BÁO CÁO DOANH THU OR COMBINED PRODUCTIVITY */}
+                {filterDivision === "RMA" ? (
+                  <div id="card-combined-productivity" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-600/5 rounded-full blur-xl group-hover:bg-amber-600/10 transition-all"></div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-amber-400 font-mono uppercase tracking-wider">NSLĐ GỘP (DCBG & DCRMA)</span>
+                      <Users className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <div className="text-2xl font-bold text-amber-400 tracking-tight">
+                      {kpis.combinedBgRmaLp}%
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1 flex flex-col gap-0.5">
+                      <div>Sản lượng gộp: {kpis.combinedBgRmaEq.toLocaleString()} SP</div>
+                      <div>Tổng công gộp: {kpis.combinedBgRmaMandays.toLocaleString()} công</div>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-slate-800/50">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 font-mono italic">Mục tiêu: {kpis.monthTarget}%</span>
+                        <div className={`w-2 h-2 rounded-full ${kpis.combinedBgRmaLp >= kpis.monthTarget ? "bg-emerald-500" : "bg-rose-500"} animate-pulse`}></div>
+                      </div>
+                    </div>
                   </div>
-                  {isRevenueVisible ? (
-                    <>
-                      <div className="text-2xl font-bold text-emerald-400 tracking-tight">
-                        {kpis.actualRevenue.toLocaleString()}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-1">KH: {kpis.plannedRevenue.toLocaleString()}</div>
-                      <div className="mt-2 text-xs flex items-center justify-between">
-                        <span className="text-slate-400">Tỉ lệ hoàn thành</span>
-                        <span className="font-mono font-bold text-emerald-400">
-                            {kpis.plannedRevenue > 0 ? Math.round((kpis.actualRevenue / kpis.plannedRevenue) * 100) : 0}%
-                        </span>
-                      </div>
-                      <div className="mt-3 pt-2 border-t border-slate-800/50 flex justify-end">
-                        <button 
-                          onClick={() => {
-                            setIsRevenueVisible(false);
-                            setIsPasswordInputVisible(false);
-                          }}
-                          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-0"
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>Khóa lại</span>
+                ) : (
+                  <div id="card-revenue" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-600/5 rounded-full blur-xl group-hover:bg-emerald-600/10 transition-all"></div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider">DOANH THU (KH VS THỰC)</span>
+                      {isRevenueVisible ? (
+                        <button onClick={() => {
+                          setIsRevenueVisible(false);
+                          setIsPasswordInputVisible(false);
+                        }} className="cursor-pointer border-0 bg-transparent text-emerald-400 hover:text-emerald-300 transition-colors" title="Khóa bảng doanh thu">
+                          <Unlock className="w-4 h-4" />
                         </button>
-                      </div>
-                    </>
-                  ) : isPasswordInputVisible ? (
-                    <div className="flex flex-col items-center justify-center py-2 space-y-2">
-                      <input
-                        type="password"
-                        placeholder="Nhập mật khẩu..."
-                        className="w-full bg-slate-900 border border-slate-700 text-white px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                        value={passwordInput}
-                        onChange={(e) => {
-                          setPasswordInput(e.target.value);
-                          setRevenuePasswordError("");
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                      ) : (
+                        <button onClick={() => {
+                          setIsPasswordInputVisible(!isPasswordInputVisible);
+                          setPasswordInput("");
+                        }} className="cursor-pointer border-0 bg-transparent text-slate-500 hover:text-emerald-400 transition-colors" title="Mở khóa bảng doanh thu">
+                          <Lock className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {isRevenueVisible ? (
+                      <>
+                        <div className="text-2xl font-bold text-emerald-400 tracking-tight">
+                          {kpis.actualRevenue.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-slate-400 mt-1">KH: {kpis.plannedRevenue.toLocaleString()}</div>
+                        <div className="mt-2 text-xs flex items-center justify-between">
+                          <span className="text-slate-400">Tỉ lệ hoàn thành</span>
+                          <span className="font-mono font-bold text-emerald-400">
+                              {kpis.plannedRevenue > 0 ? Math.round((kpis.actualRevenue / kpis.plannedRevenue) * 100) : 0}%
+                          </span>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-800/50 flex justify-end">
+                          <button 
+                            onClick={() => {
+                              setIsRevenueVisible(false);
+                              setIsPasswordInputVisible(false);
+                            }}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer bg-transparent border-0"
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>Khóa lại</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : isPasswordInputVisible ? (
+                      <div className="flex flex-col items-center justify-center py-2 space-y-2">
+                        <input
+                          type="password"
+                          placeholder="Nhập mật khẩu..."
+                          className="w-full bg-slate-900 border border-slate-700 text-white px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          value={passwordInput}
+                          onChange={(e) => {
+                            setPasswordInput(e.target.value);
+                            setRevenuePasswordError("");
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              if (passwordInput === "SH2026") {
+                                setIsRevenueVisible(true);
+                                setIsPasswordInputVisible(false);
+                                setRevenuePasswordError("");
+                              } else {
+                                setRevenuePasswordError("Mật khẩu không đúng!");
+                              }
+                            }
+                          }}
+                        />
+                        {revenuePasswordError && (
+                          <span className="text-[11px] text-rose-500 font-bold font-mono tracking-tight animate-bounce">
+                            ⚠️ {revenuePasswordError}
+                          </span>
+                        )}
+                        <button
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-1.5 rounded-lg transition-colors border-0 cursor-pointer"
+                          onClick={() => {
                             if (passwordInput === "SH2026") {
                               setIsRevenueVisible(true);
                               setIsPasswordInputVisible(false);
@@ -4259,43 +4343,26 @@ export default function App() {
                             } else {
                               setRevenuePasswordError("Mật khẩu không đúng!");
                             }
-                          }
-                        }}
-                      />
-                      {revenuePasswordError && (
-                        <span className="text-[11px] text-rose-500 font-bold font-mono tracking-tight animate-bounce">
-                          ⚠️ {revenuePasswordError}
-                        </span>
-                      )}
-                      <button
-                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-1.5 rounded-lg transition-colors border-0 cursor-pointer"
+                          }}
+                        >
+                          Mở khóa
+                        </button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="flex flex-col items-center justify-center py-2 opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
                         onClick={() => {
-                          if (passwordInput === "SH2026") {
-                            setIsRevenueVisible(true);
-                            setIsPasswordInputVisible(false);
-                            setRevenuePasswordError("");
-                          } else {
-                            setRevenuePasswordError("Mật khẩu không đúng!");
-                          }
+                          setIsPasswordInputVisible(!isPasswordInputVisible);
+                          setPasswordInput("");
+                          setRevenuePasswordError("");
                         }}
                       >
-                        Mở khóa
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                      className="flex flex-col items-center justify-center py-2 opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
-                      onClick={() => {
-                        setIsPasswordInputVisible(!isPasswordInputVisible);
-                        setPasswordInput("");
-                        setRevenuePasswordError("");
-                      }}
-                    >
-                      <Lock className="w-6 h-6 text-slate-500 mb-2 hover:text-emerald-400 transition-colors" />
-                      <span className="text-xs text-slate-500">Dữ liệu bảo mật</span>
-                    </div>
-                  )}
-                </div>
+                        <Lock className="w-6 h-6 text-slate-500 mb-2 hover:text-emerald-400 transition-colors" />
+                        <span className="text-xs text-slate-500">Dữ liệu bảo mật</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* CARD 4: HIỆU SUẤT TRUNG BÌNH */}
                 <div id="card-efficiency" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
@@ -4691,7 +4758,6 @@ export default function App() {
                             </td>
                           ))}
                         </tr>
-
                         <tr key="scr-week-header-label" className="bg-slate-900/30 font-semibold">
                           <td colSpan={13} className="py-2 px-3 text-rose-400 border-t border-slate-800 font-sans">
                             Báo cáo hàng hỏng Tuần
@@ -5545,7 +5611,6 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800 bg-slate-950/30 text-slate-200">
-                          {/* 1. Model Rows */}
                           {formModelItems
                             .filter((item) => {
                               if (filterDivision === "ALL") return true;
@@ -5554,70 +5619,69 @@ export default function App() {
                               return p.group === filterDivision;
                             })
                             .map((item, idx) => {
-                            const prodDef = products.find((p) => p.id === item.productId) || products[0];
-      if (!prodDef) return null;
-      
-      const modelActual = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
-                            return (
-                              <tr key={item.id} className="hover:bg-slate-900/50 transition">
-                                <td className="py-1 px-1 sticky left-0 bg-slate-950/50 z-10 text-left border-r border-slate-800 min-w-[160px] w-[160px]">
-                                  <div className="flex gap-1 items-center w-full">
-                                    <span className="text-slate-600 font-bold ml-1 shrink-0 select-none whitespace-nowrap">{idx + 1}.</span>
-                                    <select
-                                      value={item.productId}
-                                      onChange={(e) => handleUpdateItem(item.id, { productId: e.target.value })}
-                                      className="w-full bg-transparent border-0 text-white focus:ring-0 outline-none cursor-pointer whitespace-nowrap text-[13px] py-0.5"
-                                    >
-                                      {products
-                                        .filter(prod => filterDivision === "ALL" || prod.group === filterDivision)
-                                        .map((prod) => (
-                                        <option key={prod.id} value={prod.id} className="bg-slate-900">
-                                          {getProductModelCode(prod.name)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </td>
-                                <td className="py-1 px-2 border-r border-slate-800 text-cyan-500 font-bold min-w-[65px] w-[65px] text-center">{prodDef.factor}</td>
-                                <td className="p-0 border-r border-slate-800 min-w-[95px] w-[95px]">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={item.dailyPlan !== undefined ? item.dailyPlan : ""}
-                                    onChange={(e) => handleUpdateItem(item.id, { dailyPlan: parseInt(e.target.value) || 0 })}
-                                    className="w-full h-full min-h-[30px] bg-transparent text-center focus:bg-slate-900 focus:outline-none font-bold text-amber-400 placeholder-slate-700 text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    placeholder="0"
-                                  />
-                                </td>
-                                {formSlots.map(slot => (
-                                  <td key={slot} className="p-0 border-r border-slate-800 min-w-[80px] w-[80px]">
+                              const prodDef = products.find((p) => p.id === item.productId) || products[0];
+                              if (!prodDef) return null;
+                              const modelActual = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
+                              return (
+                                <tr key={`model-row-${item.id}-${idx}`} className="hover:bg-slate-900/50 transition">
+                                  <td className="py-1 px-1 sticky left-0 bg-slate-950/50 z-10 text-left border-r border-slate-800 min-w-[160px] w-[160px]">
+                                    <div className="flex gap-1 items-center w-full">
+                                      <span className="text-slate-600 font-bold ml-1 shrink-0 select-none whitespace-nowrap">{idx + 1}.</span>
+                                      <select
+                                        value={item.productId}
+                                        onChange={(e) => handleUpdateItem(item.id, { productId: e.target.value })}
+                                        className="w-full bg-transparent border-0 text-white focus:ring-0 outline-none cursor-pointer whitespace-nowrap text-[13px] py-0.5"
+                                      >
+                                        {products
+                                          .filter(prod => filterDivision === "ALL" || prod.group === filterDivision)
+                                          .map((prod) => (
+                                          <option key={prod.id} value={prod.id} className="bg-slate-900">
+                                            {getProductModelCode(prod.name)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </td>
+                                  <td className="py-1 px-2 border-r border-slate-800 text-cyan-500 font-bold min-w-[65px] w-[65px] text-center">{prodDef.factor}</td>
+                                  <td className="p-0 border-r border-slate-800 min-w-[95px] w-[95px]">
                                     <input
                                       type="number"
                                       min={0}
-                                      value={item.hourlyActuals[slot] !== undefined ? item.hourlyActuals[slot] : ""}
-                                      onChange={(e) => handleUpdateItemHourly(item.id, slot, parseInt(e.target.value) || 0)}
-                                      className="w-full h-full min-h-[30px] bg-transparent text-center focus:bg-slate-900 focus:outline-none font-bold text-white placeholder-slate-700 text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                      placeholder="-"
+                                      value={item.dailyPlan !== undefined ? item.dailyPlan : ""}
+                                      onChange={(e) => handleUpdateItem(item.id, { dailyPlan: parseInt(e.target.value) || 0 })}
+                                      className="w-full h-full min-h-[30px] bg-transparent text-center focus:bg-slate-900 focus:outline-none font-bold text-amber-400 placeholder-slate-700 text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      placeholder="0"
                                     />
                                   </td>
-                                ))}
-                                <td className="py-1 px-2 font-bold text-emerald-400 border-r border-slate-800 bg-slate-900/30 min-w-[85px] w-[85px] text-center">{modelActual}</td>
-                                <td className={`py-1 px-2 font-bold border-r border-slate-800 bg-slate-900/30 text-center min-w-[85px] w-[85px] ${
-                                  modelActual - (item.dailyPlan || 0) >= 0 ? "text-emerald-400" : "text-rose-500"
-                                }`}>
-                                  {modelActual - (item.dailyPlan || 0) > 0 ? `+${modelActual - (item.dailyPlan || 0)}` : modelActual - (item.dailyPlan || 0)}
-                                </td>
-                                <td className="py-1 px-2 font-bold text-cyan-400 border-r border-slate-800 bg-slate-900/30 text-center min-w-[115px] w-[115px]">
-                                  {Math.max(0, (item.dailyPlan || 0) + getPrevDayLeftover(item.productId, formDate) - modelActual)}
-                                </td>
-                                <td className="py-1 px-2">
-                                  <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-rose-500 hover:text-rose-400 transition" disabled={formModelItems.length === 1}>
-                                    <Trash2 className="w-3.5 h-3.5 mx-auto" />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                  {formSlots.map(slot => (
+                                    <td key={slot} className="p-0 border-r border-slate-800 min-w-[80px] w-[80px]">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={item.hourlyActuals[slot] !== undefined ? item.hourlyActuals[slot] : ""}
+                                        onChange={(e) => handleUpdateItemHourly(item.id, slot, parseInt(e.target.value) || 0)}
+                                        className="w-full h-full min-h-[30px] bg-transparent text-center focus:bg-slate-900 focus:outline-none font-bold text-white placeholder-slate-700 text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        placeholder="-"
+                                      />
+                                    </td>
+                                  ))}
+                                  <td className="py-1 px-2 font-bold text-emerald-400 border-r border-slate-800 bg-slate-900/30 min-w-[85px] w-[85px] text-center">{modelActual}</td>
+                                  <td className={`py-1 px-2 font-bold border-r border-slate-800 bg-slate-900/30 text-center min-w-[85px] w-[85px] ${
+                                    modelActual - (item.dailyPlan || 0) >= 0 ? "text-emerald-400" : "text-rose-500"
+                                  }`}>
+                                    {modelActual - (item.dailyPlan || 0) > 0 ? `+${modelActual - (item.dailyPlan || 0)}` : modelActual - (item.dailyPlan || 0)}
+                                  </td>
+                                  <td className="py-1 px-2 font-bold text-cyan-400 border-r border-slate-800 bg-slate-900/30 text-center min-w-[115px] w-[115px]">
+                                    {Math.max(0, (item.dailyPlan || 0) + getPrevDayLeftover(item.productId, formDate) - modelActual)}
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-rose-500 hover:text-rose-400 transition" disabled={formModelItems.length === 1}>
+                                      <Trash2 className="w-3.5 h-3.5 mx-auto" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
 
                           {/* 2. Add Row Button */}
                           <tr key="add-row-btn">
@@ -5739,7 +5803,7 @@ export default function App() {
                           )}
 
                           {/* Productivity RMA % */}
-                          {(filterDivision === "ALL" || filterDivision === "MLN") && (
+                          {(filterDivision === "ALL" || filterDivision === "MLN" || filterDivision === "RMA") && (
                             <tr key="productivity-rma-row" className="bg-slate-900 font-bold border-t border-slate-800">
                               <td colSpan={3} className="py-1 px-1 text-right text-amber-400 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
                                 NSLĐ DCRMA (%)
@@ -5749,11 +5813,14 @@ export default function App() {
                                 formModelItems.forEach(item => {
                                   const p = products.find(x => x.id === item.productId) || products[0];
                                   if (!p) return;
-                                  if (p.group === "MLN") {
-                                    const isRMA = p.name.toLowerCase().includes("rma") || p.code.toLowerCase().includes("rma") || p.id.toLowerCase().includes("rma");
-                                    if (isRMA) {
-                                      sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
-                                    }
+                                  const isRMA = p.group === "RMA" || 
+                                                (p.group === "MLN" && (
+                                                  p.name.toLowerCase().includes("rma") || 
+                                                  p.code.toLowerCase().includes("rma") || 
+                                                  p.id.toLowerCase().includes("rma")
+                                                ));
+                                  if (isRMA) {
+                                    sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
                                   }
                                 });
                                 const workersRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
@@ -5818,7 +5885,7 @@ export default function App() {
                                   const p = products.find(x => x.id === item.productId) || products[0];
                                   sumEqCombined += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
                                 });
-                                const workersCombined = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0) + (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
+                                const workersCombined = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0) + (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0) + (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
                                 let prodPct = 0;
                                 if (workersCombined > 0) {
                                   prodPct = Number(((sumEqCombined / (workersCombined * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
@@ -7480,26 +7547,26 @@ export default function App() {
                         <th className="py-3 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Tổng Công</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                      {(historyYear === 2025 ? metrics2025 : processedMetrics2026).map((m, idx) => {
-                        const now = new Date();
-                        const currentYear = now.getFullYear();
-                        const currentMonth = now.getMonth() + 1;
+                      <tbody className="divide-y divide-slate-800/50">
+                        {(historyYear === 2025 ? metrics2025 : processedMetrics2026).map((m) => {
+                          const now = new Date();
+                          const currentYear = now.getFullYear();
+                          const currentMonth = now.getMonth() + 1;
 
-                        const isPast = historyYear < currentYear || (historyYear === currentYear && m.month < currentMonth);
-                        const isCurrent = historyYear === currentYear && m.month === currentMonth;
-                        const isLocked = isPast || isCurrent;
-                        
-                        // Auto report for past and current months
-                        const isAutoReportMonth = isLocked;
-                        
-                        const isLpLocked = isLocked;
-                        const isApLocked = isLocked;
-                        const isEpLocked = isLocked;
-                        const isPmLocked = isLocked;
+                          const isPast = historyYear < currentYear || (historyYear === currentYear && m.month < currentMonth);
+                          const isCurrent = historyYear === currentYear && m.month === currentMonth;
+                          const isLocked = isPast || isCurrent;
+                          
+                          // Auto report for past and current months
+                          const isAutoReportMonth = isLocked;
+                          
+                          const isLpLocked = isLocked;
+                          const isApLocked = isLocked;
+                          const isEpLocked = isLocked;
+                          const isPmLocked = isLocked;
 
-                        return (
-                          <tr key={idx} className={`hover:bg-slate-900/50 transition-colors ${isLocked ? "bg-slate-950/20" : ""}`}>
+                          return (
+                            <tr key={`history-row-${m.month}-${historyYear}`} className={`hover:bg-slate-900/50 transition-colors ${isLocked ? "bg-slate-950/20" : ""}`}>
                             <td className="py-2 px-2 text-sm font-medium text-slate-300">
                               <div className="flex items-center gap-1.5">
                                 Tháng {m.month}
