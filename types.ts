@@ -4,7 +4,7 @@
  */
 
 // Định nghĩa chủng loại sản phẩm (Water Purifiers & Gas Stoves)
-export type ProductGroup = "MLN" | "BG"; // Máy Lọc Nước | Bếp Gas
+export type ProductGroup = "MLN" | "BG" | "RMA"; // Máy Lọc Nước | Bếp Gas | RMA
 
 export interface ProductDefinition {
   id: string;

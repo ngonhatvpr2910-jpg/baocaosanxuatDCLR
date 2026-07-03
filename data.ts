@@ -205,7 +205,8 @@ export const SUNHOUSE_PRODUCTS: ProductDefinition[] = [
 // Danh sách các Dây Chuyền Lắp Ráp (DCLR) Nhà Máy Bình Dương (NMBD) & Đông Anh (NMDA)
 export const SUNHOUSE_LINES: ProductionLine[] = [
   { id: "line-ro", name: "DCRO", group: "MLN", location: "NMBD", targetDailyQty: 150 },
-  { id: "line-bg", name: "DCBG", group: "BG", location: "NMBD", targetDailyQty: 160 }
+  { id: "line-bg", name: "DCBG", group: "BG", location: "NMBD", targetDailyQty: 160 },
+  { id: "line-rma", name: "DCRMA", group: "RMA", location: "NMBD", targetDailyQty: 100 }
 ];
 
 // Số liệu gốc 2025 từ bảng Excel

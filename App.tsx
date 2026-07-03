@@ -1,9 +1,13 @@
+
+import { useState } from 'react';
+
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -54,6 +58,7 @@ import {
   Lock,
   Unlock,
   History,
+  ScanBarcode, Barcode, List, Search, Filter, Eye, RefreshCw,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from "motion/react";
@@ -212,6 +217,21 @@ export function getProductModelCode(name: string): string {
   }
   return name;
 }
+
+const YAXIS_DOMAIN: [number, "auto"] = [0, "auto"];
+
+
+
+const DigitalClock = () => {
+  const [time, setTime] = useState(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(new Date().toLocaleTimeString("vi-VN", { hour12: false }));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return <span className="text-rose-500 font-bold ml-1">{time}</span>;
+};
 
 export default function App() {
   // --- STATE ---
@@ -600,6 +620,371 @@ export default function App() {
   const [formShift, setFormShift] = useState<"Ca HC (08:00 - 17:00)" | "Ca HC (08:00 - 19h)" | "Ca HC (08:00 - 20h00)">("Ca HC (08:00 - 17:00)");
   const [formSlots, setFormSlots] = useState<string[]>(() => getShiftSlots("Ca HC (08:00 - 17:00)"));
   const [newSlotInput, setNewSlotInput] = useState<string>("20H - 21H");
+  const [scanInput, setScanInput] = useState<string>("");
+
+  interface ScannedImei {
+    id: string;
+    imei: string;
+    productId: string;
+    timestamp: string;
+    slot: string;
+  }
+
+  interface DeclaredImei { imei: string; productId: string; date: string; }
+  const [declaredImeis, setDeclaredImeis] = useState<DeclaredImei[]>(() => {
+    const saved = localStorage.getItem("sunhouse_declared_imeis");
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e){}
+    }
+    return [];
+  });
+  useEffect(() => {
+    localStorage.setItem("sunhouse_declared_imeis", JSON.stringify(declaredImeis));
+  }, [declaredImeis]);
+
+  const [scannedImeis, setScannedImeis] = useState<ScannedImei[]>(() => {
+    const saved = localStorage.getItem("sunhouse_scanned_imeis");
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          return parsed.filter((item: any) => new Date(item.timestamp).getTime() > thirtyDaysAgo);
+        }
+      } catch(e){}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sunhouse_scanned_imeis", JSON.stringify(scannedImeis));
+  }, [scannedImeis]);
+
+  const [imeiSearchTerm, setImeiSearchTerm] = useState("");
+  const [imeiFilterDate, setImeiFilterDate] = useState(new Date().toISOString().slice(0, 10));
+  
+  // NEW Sub-tab & filtering states for IMEI Tracking
+  const [imeiSubTab, setImeiSubTab] = useState<"scanned" | "declared" | "compare">("scanned");
+  const [declareSearchTerm, setDeclareSearchTerm] = useState("");
+  const [declareFilterDate, setDeclareFilterDate] = useState(new Date().toISOString().slice(0, 10));
+  const [compareStatusFilter, setCompareStatusFilter] = useState<"all" | "matched" | "missing" | "un-declared">("all");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteDeclareConfirmImei, setDeleteDeclareConfirmImei] = useState<string | null>(null);
+  const [declareImeiInput, setDeclareImeiInput] = useState("");
+  const [selectedDeclareDate, setSelectedDeclareDate] = useState(formDate);
+  const [selectedDeclareProductId, setSelectedDeclareProductId] = useState("");
+
+  const filteredDeclareProducts = useMemo(() => {
+    if (!selectedDeclareDate) return [];
+    const dateParts = selectedDeclareDate.split("-");
+    if (dateParts.length < 3) return [];
+    const ym = `${dateParts[0]}-${dateParts[1]}`;
+    const dNum = parseInt(dateParts[2], 10);
+    
+    return products.filter(p => {
+      const plan = monthlyPlan[ym]?.[p.id]?.[dNum] || 0;
+      return plan > 0;
+    });
+  }, [selectedDeclareDate, monthlyPlan, products]);
+
+  useEffect(() => {
+    if (filteredDeclareProducts.length > 0) {
+      if (!selectedDeclareProductId || !filteredDeclareProducts.find(p => p.id === selectedDeclareProductId)) {
+        setSelectedDeclareProductId(filteredDeclareProducts[0].id);
+      }
+    } else {
+      setSelectedDeclareProductId("");
+    }
+  }, [filteredDeclareProducts, selectedDeclareProductId]);
+
+  const filteredScannedImeis = useMemo(() => {
+    let filtered = scannedImeis;
+    if (imeiFilterDate) {
+      filtered = filtered.filter(item => {
+        try {
+          return new Date(item.timestamp).toISOString().slice(0, 10) === imeiFilterDate;
+        } catch (e) {
+          return false;
+        }
+      });
+    }
+    if (imeiSearchTerm) {
+      const searchLower = imeiSearchTerm.toLowerCase();
+      filtered = filtered.filter(item => {
+        const prod = products.find(p => p.id === item.productId);
+        return item.imei.toLowerCase().includes(searchLower) ||
+               (prod && prod.code.toLowerCase().includes(searchLower)) ||
+               (prod && prod.name.toLowerCase().includes(searchLower));
+      });
+    }
+    return filtered;
+  }, [scannedImeis, imeiSearchTerm, imeiFilterDate, products]);
+
+  const filteredDeclaredImeis = useMemo(() => {
+    let filtered = declaredImeis;
+    if (declareFilterDate) {
+      filtered = filtered.filter(item => item.date === declareFilterDate);
+    }
+    if (declareSearchTerm) {
+      const searchLower = declareSearchTerm.toLowerCase();
+      filtered = filtered.filter(item => {
+        const prod = products.find(p => p.id === item.productId);
+        return item.imei.toLowerCase().includes(searchLower) ||
+               (prod && prod.code.toLowerCase().includes(searchLower)) ||
+               (prod && prod.name.toLowerCase().includes(searchLower));
+      });
+    }
+    return filtered;
+  }, [declaredImeis, declareSearchTerm, declareFilterDate, products]);
+
+  interface ComparisonRecord {
+    imei: string;
+    productId: string;
+    declareDate?: string;
+    scanTimestamp?: string;
+    scanSlot?: string;
+    status: "matched" | "missing" | "un-declared";
+  }
+
+  const comparisonRecords = useMemo(() => {
+    const allImeiMap = new Map<string, ComparisonRecord>();
+
+    declaredImeis.forEach(d => {
+      allImeiMap.set(d.imei, {
+        imei: d.imei,
+        productId: d.productId,
+        declareDate: d.date,
+        status: "missing"
+      });
+    });
+
+    scannedImeis.forEach(s => {
+      const existing = allImeiMap.get(s.imei);
+      if (existing) {
+        existing.scanTimestamp = s.timestamp;
+        existing.scanSlot = s.slot;
+        existing.status = "matched";
+      } else {
+        allImeiMap.set(s.imei, {
+          imei: s.imei,
+          productId: s.productId,
+          scanTimestamp: s.timestamp,
+          scanSlot: s.slot,
+          status: "un-declared"
+        });
+      }
+    });
+
+    return Array.from(allImeiMap.values());
+  }, [declaredImeis, scannedImeis]);
+
+  const filteredComparisonRecords = useMemo(() => {
+    let records = comparisonRecords;
+    
+    if (imeiFilterDate) {
+      records = records.filter(r => {
+        if (r.declareDate === imeiFilterDate) return true;
+        if (r.scanTimestamp) {
+          try {
+            return new Date(r.scanTimestamp).toISOString().slice(0, 10) === imeiFilterDate;
+          } catch (e) {}
+        }
+        return false;
+      });
+    }
+    
+    if (compareStatusFilter !== "all") {
+      records = records.filter(r => r.status === compareStatusFilter);
+    }
+    
+    if (imeiSearchTerm) {
+      const searchLower = imeiSearchTerm.toLowerCase();
+      records = records.filter(r => {
+        const prod = products.find(p => p.id === r.productId);
+        return r.imei.toLowerCase().includes(searchLower) ||
+               (prod && prod.code.toLowerCase().includes(searchLower)) ||
+               (prod && prod.name.toLowerCase().includes(searchLower));
+      });
+    }
+    
+    return records;
+  }, [comparisonRecords, imeiFilterDate, compareStatusFilter, imeiSearchTerm, products]);
+
+
+
+  const handleScanSubmit = (scannedValue?: any) => {
+    let val = scanInput;
+    if (typeof scannedValue === 'string') {
+      val = scannedValue;
+    }
+    if (!val || typeof val !== 'string' || !val.trim()) return;
+    
+    const currentHour = new Date().getHours();
+    let currentSlot = `${currentHour}H - ${currentHour + 1}H`;
+    
+    if (formSlots && !formSlots.includes(currentSlot)) {
+      const availableHours = formSlots.map(s => parseInt((s || "").split("H")[0])).filter(h => !isNaN(h));
+      const closestPastHour = availableHours.slice().reverse().find(h => h <= currentHour) || availableHours[0];
+      if (closestPastHour !== undefined) {
+         currentSlot = formSlots.find(s => s.startsWith(`${closestPastHour}H`)) || formSlots[0];
+      }
+      if (!currentSlot) {
+        setFormMessage(`❌ Không tìm thấy khung giờ phù hợp để ghi nhận.`);
+        setScanInput("");
+        return;
+      }
+    }
+    
+    
+    // --- AUTO-DETECT MODEL FROM DECLARED IMEIS ---
+    const declaration = declaredImeis.find(d => d.imei === val && d.date === formDate);
+    if (!declaration) {
+      setFormMessage(`❌ IMEI ${val} chưa được khai báo cho KHSX ngày ${formDate}.`);
+      setScanInput("");
+      return;
+    }
+    const targetModelId = declaration.productId;
+
+    // --- CHECK KHSX PLAN ---
+    const dateParts = formDate.split("-");
+    const checkYearMonth = `${dateParts[0]}-${dateParts[1]}`;
+    const checkDay = parseInt(dateParts[2], 10);
+    const planForToday = monthlyPlan[checkYearMonth]?.[targetModelId]?.[checkDay] || 0;
+
+    if (planForToday <= 0) {
+      setFormMessage(`❌ Mã hàng này chưa có Kế Hoạch Sản Xuất cho ngày ${formDate}. Không thể quét.`);
+      setScanInput("");
+      return;
+    }
+
+    // Count already scanned today for this targetModelId
+    const scannedTodayCount = scannedImeis.filter(item => {
+      if (item.productId !== targetModelId) return false;
+      try {
+        const d = new Date(item.timestamp);
+        const itemDateStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
+        return itemDateStr === formDate;
+      } catch(e) {
+        return false;
+      }
+    }).length;
+
+    if (scannedTodayCount >= planForToday) {
+      setFormMessage(`❌ Đã đủ KHSX cho model này (${scannedTodayCount}/${planForToday}). Không thể quét thêm.`);
+      setScanInput("");
+      return;
+    }
+
+    // --- CHECK DUPLICATE SCANNED IMEI ---
+    const isAlreadyScanned = scannedImeis.some(s => s.imei === val);
+    if (isAlreadyScanned) {
+      setFormMessage(`❌ IMEI ${val} đã được quét thành công trước đó (trùng lặp).`);
+      setScanInput("");
+      return;
+    }
+    
+    // ------------------
+
+    let updatedItems = [...formModelItems];
+    let itemIndex = updatedItems.findIndex(m => m.productId === targetModelId);
+    
+    if (itemIndex === -1) {
+      // Auto-add model to form if not exists
+      const newRow: FormModelItem = {
+        id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        productId: targetModelId,
+        dailyPlan: planForToday,
+        hourlyActuals: {}
+      };
+      updatedItems.push(newRow);
+      itemIndex = updatedItems.length - 1;
+    }
+    
+    const existingActuals = updatedItems[itemIndex].hourlyActuals || {};
+    updatedItems[itemIndex] = {
+      ...updatedItems[itemIndex],
+      hourlyActuals: { ...existingActuals }
+    };
+    const currentQty = parseInt(updatedItems[itemIndex].hourlyActuals[currentSlot] as any) || 0;
+    updatedItems[itemIndex].hourlyActuals[currentSlot] = currentQty + 1;
+    
+    setFormModelItems(updatedItems);
+    
+    const newImei: ScannedImei = {
+      id: `imei-${Date.now()}-${Math.random().toString(36).substring(2,9)}`,
+      imei: val,
+      productId: targetModelId,
+      timestamp: new Date().toISOString(),
+      slot: currentSlot
+    };
+    setScannedImeis(prev => [newImei, ...prev]);
+
+    setFormMessage(`✅ Đã ghi nhận +1 sản phẩm cho khung giờ ${currentSlot} (Mã quét: ${val})`);
+    setScanInput("");
+  };
+
+  const handleDeclareImeiSubmit = (val: string) => {
+    const trimmed = val.trim().toUpperCase();
+    if (!trimmed) return;
+    
+    const date = selectedDeclareDate;
+    const productId = selectedDeclareProductId;
+    if (!date || !productId) {
+      alert('Vui lòng chọn ngày và sản phẩm (có kế hoạch sản xuất) trước khi quét!');
+      return;
+    }
+
+    // --- CHECK KHSX PLAN ---
+    const dateParts = date.split("-");
+    const ym = `${dateParts[0]}-${dateParts[1]}`;
+    const dNum = parseInt(dateParts[2], 10);
+    const planLimit = monthlyPlan[ym]?.[productId]?.[dNum] || 0;
+
+    const currentCount = declaredImeis.filter(d => d.productId === productId && d.date === date).length;
+
+    if (planLimit <= 0) {
+      alert(`❌ Mã hàng này chưa có Kế Hoạch Sản Xuất cho ngày ${date}. Không thể khai báo.`);
+      return;
+    }
+
+    if (currentCount >= planLimit) {
+      alert(`❌ Đã đạt giới hạn khai báo KHSX (${currentCount}/${planLimit}) cho model này ngày ${date}. Không thể khai báo thêm.`);
+      return;
+    }
+    
+    const newDecl = { imei: trimmed, productId, date };
+    let isDuplicate = false;
+    
+    setDeclaredImeis(prev => {
+      const exists = prev.some(p => p.imei === trimmed);
+      if (exists) {
+        isDuplicate = true;
+        return prev;
+      }
+      return [newDecl, ...prev];
+    });
+    
+    if (isDuplicate) {
+      alert(`❌ IMEI ${trimmed} đã được khai báo trước đó! Không thể khai báo lại.`);
+      setDeclareImeiInput('');
+      return;
+    }
+    
+    setDeclareImeiInput('');
+    
+    // Switch to declared tab and sync date filter to show the new record directly
+    setImeiSubTab("declared");
+    setDeclareFilterDate(date);
+    
+    // Highlight the scan was successful
+    const scanInputEl = document.getElementById('declareImeiInputEl');
+    if (scanInputEl) {
+      scanInputEl.classList.add('bg-emerald-900/50');
+      setTimeout(() => {
+        scanInputEl.classList.remove('bg-emerald-900/50');
+      }, 300);
+    }
+  };
 
   const [formOfficialWorkersRO, setFormOfficialWorkersRO] = useState<{ [slotName: string]: number }>({
     "8H - 9H": 0,
@@ -615,6 +1000,32 @@ export default function App() {
     "19H - 20H": 0,
   });
   const [formSeasonalWorkersRO, setFormSeasonalWorkersRO] = useState<{ [slotName: string]: number }>({
+    "8H - 9H": 0,
+    "9H - 10H": 0,
+    "10H - 11H": 0,
+    "11H - 12H": 0,
+    "13H - 14H": 0,
+    "14H - 15H": 0,
+    "15H - 16H": 0,
+    "16H - 17H": 0,
+    "17H - 18H": 0,
+    "18H - 19H": 0,
+    "19H - 20H": 0,
+  });
+  const [formOfficialWorkersRMA, setFormOfficialWorkersRMA] = useState<{ [slotName: string]: number }>({
+    "8H - 9H": 0,
+    "9H - 10H": 0,
+    "10H - 11H": 0,
+    "11H - 12H": 0,
+    "13H - 14H": 0,
+    "14H - 15H": 0,
+    "15H - 16H": 0,
+    "16H - 17H": 0,
+    "17H - 18H": 0,
+    "18H - 19H": 0,
+    "19H - 20H": 0,
+  });
+  const [formSeasonalWorkersRMA, setFormSeasonalWorkersRMA] = useState<{ [slotName: string]: number }>({
     "8H - 9H": 0,
     "9H - 10H": 0,
     "10H - 11H": 0,
@@ -671,14 +1082,22 @@ export default function App() {
     return hw;
   }, [formOfficialWorkersBG, formSeasonalWorkersBG, formSlots]);
 
+  const formHourlyWorkersRMA = useMemo(() => {
+    const hw: { [slot: string]: number } = {};
+    formSlots.forEach((s) => {
+      hw[s] = (formOfficialWorkersRMA[s] || 0) + (formSeasonalWorkersRMA[s] || 0);
+    });
+    return hw;
+  }, [formOfficialWorkersRMA, formSeasonalWorkersRMA, formSlots]);
+
   // calculate combined formHourlyWorkers dynamically
   const formHourlyWorkers = useMemo(() => {
     const hw: { [slot: string]: number } = {};
     formSlots.forEach((s) => {
-      hw[s] = (formHourlyWorkersRO[s] || 0) + (formHourlyWorkersBG[s] || 0);
+      hw[s] = (formHourlyWorkersRO[s] || 0) + (formHourlyWorkersBG[s] || 0) + (formHourlyWorkersRMA[s] || 0);
     });
     return hw;
-  }, [formHourlyWorkersRO, formHourlyWorkersBG, formSlots]);
+  }, [formHourlyWorkersRO, formHourlyWorkersBG, formHourlyWorkersRMA, formSlots]);
 
   const [formModelItems, setFormModelItems] = useState<FormModelItem[]>(() => [
     {
@@ -702,6 +1121,9 @@ export default function App() {
     formOfficialCountRO,
     formSeasonalCountRO,
     formWorkersCountRO,
+    formOfficialCountRMA,
+    formSeasonalCountRMA,
+    formWorkersCountRMA,
     formOfficialCountBG,
     formSeasonalCountBG,
     formWorkersCountBG,
@@ -709,18 +1131,30 @@ export default function App() {
   } = useMemo(() => {
     let offRO = 0;
     let seasRO = 0;
+    let offRMA = 0;
+    let seasRMA = 0;
     let offBG = 0;
     let seasBG = 0;
 
     formSlots.forEach(slot => {
-      // Tính cho RO
+      // Tính cho RO & RMA (MLN Group)
       let sumEqRO = 0;
+      let sumEqRMA = 0;
+      
       formModelItems.forEach(item => {
         const p = products.find(x => x.id === item.productId) || products[0];
+        if (!p) return;
         if (p.group === "MLN") {
-          sumEqRO += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+          // Check for RMA keyword in name or code
+          const isRMA = p.name.toLowerCase().includes("rma") || p.code.toLowerCase().includes("rma") || p.id.toLowerCase().includes("rma");
+          if (isRMA) {
+            sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+          } else {
+            sumEqRO += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+          }
         }
       });
+
       const workersRO = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0);
       let prodPctRO = 0;
       if (workersRO > 0) {
@@ -729,6 +1163,16 @@ export default function App() {
       if (prodPctRO > 0) {
         offRO += (formOfficialWorkersRO[slot] || 0);
         seasRO += (formSeasonalWorkersRO[slot] || 0);
+      }
+
+      const workersRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
+      let prodPctRMA = 0;
+      if (workersRMA > 0) {
+        prodPctRMA = Number(((sumEqRMA / (workersRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
+      }
+      if (prodPctRMA > 0) {
+        offRMA += (formOfficialWorkersRMA[slot] || 0);
+        seasRMA += (formSeasonalWorkersRMA[slot] || 0);
       }
 
       // Tính cho BG
@@ -754,12 +1198,15 @@ export default function App() {
       formOfficialCountRO: Number((offRO / 8).toFixed(2)),
       formSeasonalCountRO: Number((seasRO / 8).toFixed(2)),
       formWorkersCountRO: Number(((offRO + seasRO) / 8).toFixed(2)),
+      formOfficialCountRMA: Number((offRMA / 8).toFixed(2)),
+      formSeasonalCountRMA: Number((seasRMA / 8).toFixed(2)),
+      formWorkersCountRMA: Number(((offRMA + seasRMA) / 8).toFixed(2)),
       formOfficialCountBG: Number((offBG / 8).toFixed(2)),
       formSeasonalCountBG: Number((seasBG / 8).toFixed(2)),
       formWorkersCountBG: Number(((offBG + seasBG) / 8).toFixed(2)),
-      formWorkersCount: Number(((offRO + seasRO + offBG + seasBG) / 8).toFixed(2)),
+      formWorkersCount: Number(((offRO + seasRO + offRMA + seasRMA + offBG + seasBG) / 8).toFixed(2)),
     };
-  }, [formSlots, formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersBG, formSeasonalWorkersBG, products]);
+  }, [formSlots, formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, products]);
   const [formTechnician, setFormTechnician] = useState<string>("Nguyễn Minh Hoàng Khiêm ( DCLR )");
   const [formMessage, setFormMessage] = useState<string>("");
 
@@ -916,6 +1363,10 @@ export default function App() {
     let totalEqQtyRO = 0;
     let totalPlanQtyRO = 0;
     let totalRemainingQtyRO = 0;
+    let totalActualQtyRMA = 0;
+    let totalEqQtyRMA = 0;
+    let totalPlanQtyRMA = 0;
+    let totalRemainingQtyRMA = 0;
     let totalActualQtyBG = 0;
     let totalEqQtyBG = 0;
     let totalPlanQtyBG = 0;
@@ -924,6 +1375,7 @@ export default function App() {
 
     formModelItems.forEach((item) => {
       const prodDef = products.find((p) => p.id === item.productId) || products[0];
+      if (!prodDef) return;
       
       const modelActual = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
       const modelEq = Math.round(modelActual * prodDef.factor);
@@ -937,7 +1389,12 @@ export default function App() {
       const remaining = Math.max(0, (item.dailyPlan || 0) + leftover - modelActual);
       totalRemainingQty += remaining;
 
-      if (prodDef.group === "MLN") {
+      if (prodDef.group === "RMA") {
+        totalActualQtyRMA += modelActual;
+        totalEqQtyRMA += modelEq;
+        totalPlanQtyRMA += (item.dailyPlan || 0);
+        totalRemainingQtyRMA += remaining;
+      } else if (prodDef.group === "MLN") {
         totalActualQtyRO += modelActual;
         totalEqQtyRO += modelEq;
         totalPlanQtyRO += (item.dailyPlan || 0);
@@ -952,19 +1409,23 @@ export default function App() {
 
     const activeSlots = formSlots;
     let totalStandardRO = 0;
+    let totalStandardRMA = 0;
     let totalStandardBG = 0;
 
     activeSlots.forEach((slot) => {
       const wRO = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0);
+      const wRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
       const wBG = (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
       totalStandardRO += wRO * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8);
+      totalStandardRMA += wRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8);
       totalStandardBG += wBG * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8);
     });
 
     const avgProductivityRO = totalStandardRO > 0 ? Number(((totalEqQtyRO / totalStandardRO) * 100).toFixed(1)) : 0;
+    const avgProductivityRMA = totalStandardRMA > 0 ? Number(((totalEqQtyRMA / totalStandardRMA) * 100).toFixed(1)) : 0;
     const avgProductivityBG = totalStandardBG > 0 ? Number(((totalEqQtyBG / totalStandardBG) * 100).toFixed(1)) : 0;
 
-    const totalStandardCombined = totalStandardRO + totalStandardBG;
+    const totalStandardCombined = totalStandardRO + totalStandardRMA + totalStandardBG;
     const avgProductivity = totalStandardCombined > 0 ? Number(((totalEqQty / totalStandardCombined) * 100).toFixed(1)) : 0;
 
     return {
@@ -974,21 +1435,27 @@ export default function App() {
       totalRemainingQty,
       totalWorkers: formWorkersCount,
       totalWorkersRO: formWorkersCountRO,
+      totalWorkersRMA: formWorkersCountRMA,
       totalWorkersBG: formWorkersCountBG,
       totalActualQtyRO,
       totalEqQtyRO,
       totalPlanQtyRO,
       totalRemainingQtyRO,
+      totalActualQtyRMA,
+      totalEqQtyRMA,
+      totalPlanQtyRMA,
+      totalRemainingQtyRMA,
       totalActualQtyBG,
       totalEqQtyBG,
       totalPlanQtyBG,
       totalRemainingQtyBG,
       avgProductivity,
       avgProductivityRO,
+      avgProductivityRMA,
       avgProductivityBG,
       totalRevenue,
     };
-  }, [formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersBG, formSeasonalWorkersBG, formSlots, formWorkersCount, formWorkersCountRO, formWorkersCountBG, products, monthlyPlan, productionLogs, formDate]);
+  }, [formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, formSlots, formWorkersCount, formWorkersCountRO, formWorkersCountRMA, formWorkersCountBG, products, monthlyPlan, productionLogs, formDate]);
   // --- LOGIC TÍNH TOÁN DỰA TRÊN NHẬT KÝ CA MỚI
   const processedMetrics2026 = useMemo(() => {
     // Clone số liệu 2026 từ biểu đồ đã cập nhật
@@ -1101,12 +1568,12 @@ export default function App() {
   const displayWeeklyAttendance = useMemo(() => {
     return WEEKLY_ATTENDANCE.map(w => ({
       ...w,
-      rate: w.rate === null ? null : Number((w.rate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 1.01 : 0.99))).toFixed(1))
+      rate: w.rate === null ? null : Number((w.rate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 1.01 : filterDivision === "RMA" ? 1.02 : 0.99))).toFixed(1))
     }));
   }, [filterDivision]);
 
   const displayMonthlyScrap = useMemo(() => {
-    const ratio = filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.6 : 0.4);
+    const ratio = filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.5 : filterDivision === "RMA" ? 0.1 : 0.4);
     return monthlyScrap.map(r => ({
       ...r,
       scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * ratio)
@@ -1114,7 +1581,7 @@ export default function App() {
   }, [filterDivision, monthlyScrap]);
 
   const displayWeeklyScrap = useMemo(() => {
-    const ratio = filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.6 : 0.4);
+    const ratio = filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.5 : filterDivision === "RMA" ? 0.1 : 0.4);
     return weeklyScrap.map(r => ({
       ...r,
       scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * ratio)
@@ -1124,19 +1591,23 @@ export default function App() {
   const displayWeeklyDclrError = useMemo(() => {
     return weeklyDclrError.map(r => ({
       ...r,
-      errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : 1.1))).toFixed(2))
+      errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
     }));
   }, [filterDivision, weeklyDclrError]);
 
   const displayMonthlyDclrError = useMemo(() => {
     return monthlyDclrError.map(r => ({
       ...r,
-      errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : 1.1))).toFixed(2))
+      errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
     }));
   }, [filterDivision, monthlyDclrError]);
 
   // Bộ lọc dữ liệu theo bộ phận Phân xưởng (Máy Lọc Nước vs Bếp Gas)
   // Trong thực tế, các chỉ số sản lượng sẽ chia theo nhóm sản phẩm. Nếu lọc, ta áp dụng hệ số tỉ lệ tương đối hoặc tính từ logs
+  const chartMonthlyScrap = useMemo(() => displayMonthlyScrap.filter(r => r.scrapCost !== null), [displayMonthlyScrap]);
+  const chartWeeklyScrap = useMemo(() => displayWeeklyScrap.filter(r => r.scrapCost !== null), [displayWeeklyScrap]);
+  const chartWeeklyDclrError = useMemo(() => displayWeeklyDclrError.filter(e => e.errorRate !== null), [displayWeeklyDclrError]);
+
   const displayMetrics = useMemo(() => {
     const baseMetrics = selectedYear === 2025 ? metrics2025 : processedMetrics2026;
 
@@ -1187,14 +1658,21 @@ export default function App() {
               const mandays = assemMonthDays.reduce((sum, r) => sum + (Number(r.congChinhThuc || 0) + Number(r.congThoiVu || 0)), 0);
               const lp = mandays > 0 ? Number(((eq / mandays) / 9.03 * 100).toFixed(2)) : null;
               return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
+            } else if (filterDivision === "RMA") {
+              // Simulated historical for RMA
+              const eq = Math.round(assemMonthDays.reduce((sum, r) => sum + Number(r.outputLineChinh || 0), 0) * 0.1);
+              const actual = Math.round(assemMonthDays.reduce((sum, r) => sum + Number(r.actualLineChinh || 0), 0) * 0.1);
+              const mandays = Math.round(assemMonthDays.reduce((sum, r) => sum + (Number(r.congChinhThuc || 0) + Number(r.congThoiVu || 0)), 0) * 0.1);
+              const lp = mandays > 0 ? Number(((eq / mandays) / 9.03 * 100).toFixed(2)) : null;
+              return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
             }
           }
         }
 
         if (filterDivision === "ALL") return m;
-        const ratio = filterDivision === "MLN" ? 0.55 : 0.45;
-        const mandayRatio = filterDivision === "MLN" ? 0.52 : 0.48;
-        const nslRatio = filterDivision === "MLN" ? 1.02 : 0.98;
+        const ratio = filterDivision === "MLN" ? 0.5 : filterDivision === "RMA" ? 0.05 : 0.45;
+        const mandayRatio = filterDivision === "MLN" ? 0.52 : filterDivision === "RMA" ? 0.04 : 0.44;
+        const nslRatio = filterDivision === "MLN" ? 1.02 : filterDivision === "RMA" ? 0.9 : 0.98;
         
         if (m.equivalentProducts === null) return m;
         return {
@@ -1246,6 +1724,10 @@ export default function App() {
           finalEq += formAggregates.totalEqQtyRO;
           finalActual += formAggregates.totalActualQtyRO;
           finalMandays += formWorkersCountRO;
+        } else if (filterDivision === "RMA") {
+          finalEq += formAggregates.totalEqQtyRMA;
+          finalActual += formAggregates.totalActualQtyRMA;
+          finalMandays += formWorkersCountRMA;
         } else if (filterDivision === "BG") {
           finalEq += formAggregates.totalEqQtyBG;
           finalActual += formAggregates.totalActualQtyBG;
@@ -1277,8 +1759,17 @@ export default function App() {
       let totalOutput = 0;
       
       if (filterDivision === "ALL" || filterDivision === "MLN") {
-        totalCong += item.congChinhThuc + item.congThoiVu;
-        totalOutput += item.outputLineChinh;
+        const ratio = filterDivision === "ALL" ? 1 : 0.9;
+        totalCong += (item.congChinhThuc + item.congThoiVu) * ratio;
+        totalOutput += item.outputLineChinh * ratio;
+      }
+      if (filterDivision === "ALL" || filterDivision === "RMA") {
+        const ratio = filterDivision === "ALL" ? 0 : 0.1;
+        // In "ALL" mode, we don't double count, but in "RMA" mode we show the 10% portion
+        if (filterDivision === "RMA") {
+           totalCong += (item.congChinhThuc + item.congThoiVu) * 0.1;
+           totalOutput += item.outputLineChinh * 0.1;
+        }
       }
       if (filterDivision === "ALL" || filterDivision === "BG") {
         totalCong += gasRow.congGasStove + gasRow.congSeasonal + gasRow.congRma;
@@ -1392,7 +1883,9 @@ export default function App() {
     // Iterate over configured products to ensure data matches visibility in the plan table
     products.forEach(p => {
       // Filter based on selected division
-      if (filterDivision !== "ALL" && p.group !== filterDivision) {
+      if (filterDivision === "ALL") {
+        if (p.group === "RMA") return; // Exclude RMA from total plan when ALL
+      } else if (p.group !== filterDivision) {
         return;
       }
       
@@ -1564,8 +2057,23 @@ export default function App() {
       ? logsForMonth
       : logsForMonth.filter((log) => log.date !== formDate);
 
-    let totalEqProd = filteredLogs.reduce((acc, curr) => acc + curr.equivalentProducts, 0);
-    let totalActualUnitsMonth = filteredLogs.reduce((acc, curr) => acc + curr.actualUnits, 0);
+    // Split Eq Prod into two: for display in Card 2 vs for calculation in Card 4/4.5
+    let totalEqProd_display = 0;
+    let totalEqProd_productivity = 0;
+    let totalActualUnitsMonth_display = 0;
+
+    filteredLogs.forEach(log => {
+      const isRMA = log.productGroup === "RMA";
+      
+      // Always add to productivity base
+      totalEqProd_productivity += log.equivalentProducts;
+      
+      // Conditional add to display totals
+      if (!(filterDivision === "ALL" && isRMA)) {
+        totalEqProd_display += log.equivalentProducts;
+        totalActualUnitsMonth_display += log.actualUnits;
+      }
+    });
     
     // Group workers to avoid double counting across different models on the same day/shift/line
     const uniqueShiftMap: { [key: string]: { workers: number, official: number, seasonal: number } } = {};
@@ -1590,23 +2098,38 @@ export default function App() {
     // If formDate month matches and it hasn't been saved yet, add active form values
     if (!hasSavedFormDate) {
       if (filterDivision === "ALL") {
-        totalEqProd += formAggregates.totalEqQty;
-        totalActualUnitsMonth += formAggregates.totalActualQty;
+        // For Display (Card 2) - Exclude RMA
+        totalEqProd_display += (formAggregates.totalEqQtyRO + formAggregates.totalEqQtyBG);
+        totalActualUnitsMonth_display += (formAggregates.totalActualQtyRO + formAggregates.totalActualQtyBG);
+        
+        // For Productivity (Card 4/4.5) - Include All
+        totalEqProd_productivity += formAggregates.totalEqQty;
+        
+        // Workers (Card 5) - Include All
         totalMandaysMonth += formWorkersCount;
-        totalOfficialMonth += formOfficialCountRO + formOfficialCountBG;
-        totalSeasonalMonth += formSeasonalCountRO + formSeasonalCountBG;
+        totalOfficialMonth += formOfficialCountRO + formOfficialCountBG + formOfficialCountRMA;
+        totalSeasonalMonth += formSeasonalCountRO + formSeasonalCountBG + formSeasonalCountRMA;
       } else if (filterDivision === "MLN") {
-        totalEqProd += formAggregates.totalEqQtyRO;
-        totalActualUnitsMonth += formAggregates.totalActualQtyRO;
+        totalEqProd_display += formAggregates.totalEqQtyRO;
+        totalEqProd_productivity += formAggregates.totalEqQtyRO;
+        totalActualUnitsMonth_display += formAggregates.totalActualQtyRO;
         totalMandaysMonth += formWorkersCountRO;
         totalOfficialMonth += formOfficialCountRO;
         totalSeasonalMonth += formSeasonalCountRO;
       } else if (filterDivision === "BG") {
-        totalEqProd += formAggregates.totalEqQtyBG;
-        totalActualUnitsMonth += formAggregates.totalActualQtyBG;
+        totalEqProd_display += formAggregates.totalEqQtyBG;
+        totalEqProd_productivity += formAggregates.totalEqQtyBG;
+        totalActualUnitsMonth_display += formAggregates.totalActualQtyBG;
         totalMandaysMonth += formWorkersCountBG;
         totalOfficialMonth += formOfficialCountBG;
         totalSeasonalMonth += formSeasonalCountBG;
+      } else if (filterDivision === "RMA") {
+        totalEqProd_display += formAggregates.totalEqQtyRMA;
+        totalEqProd_productivity += formAggregates.totalEqQtyRMA;
+        totalActualUnitsMonth_display += formAggregates.totalActualQtyRMA;
+        totalMandaysMonth += formWorkersCountRMA;
+        totalOfficialMonth += formOfficialCountRMA;
+        totalSeasonalMonth += formSeasonalCountRMA;
       }
     }
 
@@ -1632,12 +2155,15 @@ export default function App() {
       let count = 2;
       
       if (totalMandaysMonth > 0) {
-        const currentMonthProd = Number(((totalEqProd / totalMandaysMonth / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2));
+        const currentMonthProd = Number(((totalEqProd_productivity / totalMandaysMonth / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2));
         totalProd += currentMonthProd;
         count++;
       }
       
       avgLaborProductivity = Number((totalProd / count).toFixed(2));
+    } else if (filterDivision === "RMA") {
+      // User requested current cumulative RMA to be 100%
+      avgLaborProductivity = 100;
     } else {
       avgLaborProductivity = totalMandays > 0
         ? Number(((totalEqProducts / totalMandays / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2))
@@ -1652,7 +2178,13 @@ export default function App() {
 
       return acc + Object.entries(productsInMonth).reduce((acc2: number, [prodId, days]) => {
         const prod = products.find(p => p.id === prodId);
-        if (!prod || prod.price === undefined || (filterDivision !== "ALL" && prod.group !== filterDivision)) return acc2;
+        if (!prod || prod.price === undefined) return acc2;
+        
+        // Exclude RMA when ALL
+        if (filterDivision === "ALL" && prod.group === "RMA") return acc2;
+        
+        // Filter by group if not ALL
+        if (filterDivision !== "ALL" && prod.group !== filterDivision) return acc2;
         
         const dayValues = Object.values(days) as number[];
         const totalUnits = dayValues.reduce((s: number, v: number) => s + v, 0);
@@ -1663,7 +2195,14 @@ export default function App() {
 
     const actualRevenue = filteredLogs.reduce((acc, log) => {
         const prod = products.find(p => p.id === log.productId);
-        if (!prod || prod.price === undefined || (filterDivision !== "ALL" && log.productGroup !== filterDivision)) return acc;
+        if (!prod || prod.price === undefined) return acc;
+        
+        // Exclude RMA when ALL
+        if (filterDivision === "ALL" && log.productGroup === "RMA") return acc;
+        
+        // Filter by group if not ALL
+        if (filterDivision !== "ALL" && log.productGroup !== filterDivision) return acc;
+        
         return acc + (log.actualUnits * (prod.price || 0));
     }, 0);
 
@@ -1672,14 +2211,21 @@ export default function App() {
     if (!hasSavedFormDate) {
       formModelItems.forEach(item => {
         const prod = products.find(p => p.id === item.productId);
-        if (!prod || prod.price === undefined || (filterDivision !== "ALL" && prod.group !== filterDivision)) return;
+        if (!prod || prod.price === undefined) return;
+        
+        // Exclude RMA when ALL
+        if (filterDivision === "ALL" && prod.group === "RMA") return;
+        
+        // Filter by group if not ALL
+        if (filterDivision !== "ALL" && prod.group !== filterDivision) return;
+        
         const actualUnits = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
         finalActualRevenue += actualUnits * (prod.price || 0);
       });
     }
 
     const monthTarget = formMonth >= 7 
-      ? (filterDivision === "MLN" ? 125 : filterDivision === "BG" ? 100 : 121) 
+      ? (filterDivision === "MLN" ? 125 : filterDivision === "BG" ? 100 : filterDivision === "RMA" ? 110 : 121) 
       : 110;
     const yearTarget = 110;
 
@@ -1687,13 +2233,13 @@ export default function App() {
       totalEqProducts,
       totalMandays,
       avgLaborProductivity,
-      currentJulyEq: Math.round(totalEqProd),
-      currentJulyUnconverted: Math.round(totalActualUnitsMonth),
+      currentJulyEq: Math.round(totalEqProd_display),
+      currentJulyUnconverted: Math.round(totalActualUnitsMonth_display),
       currentJulyMandays: Math.round(totalMandaysMonth),
       currentJulyOfficial: Math.round(totalOfficialMonth),
       currentJulySeasonal: Math.round(totalSeasonalMonth),
-      currentJulyProductivity: Number(((totalEqProd / (totalMandaysMonth || 1) / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2)),
-      currentJulyCompletionRate: totalMonthlyPlanUnits.total > 0 ? Number(((totalEqProd / totalMonthlyPlanUnits.total) * 100).toFixed(1)) : 0,
+      currentJulyProductivity: Number(((totalEqProd_productivity / (totalMandaysMonth || 1) / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2)),
+      currentJulyCompletionRate: totalMonthlyPlanUnits.total > 0 ? Number(((totalEqProd_display / totalMonthlyPlanUnits.total) * 100).toFixed(1)) : 0,
       plannedRevenue,
       actualRevenue: finalActualRevenue,
       monthTarget,
@@ -1972,17 +2518,25 @@ export default function App() {
   const formHourlyChartData = useMemo(() => {
     return formSlots.map(slot => {
       let sumEqRO = 0;
+      let sumEqRMA = 0;
       let sumEqBG = 0;
       formModelItems.forEach(item => {
         const p = products.find(x => x.id === item.productId) || products[0];
+        if (!p) return;
         if (p.group === "MLN") {
-          sumEqRO += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+          const isRMA = p.name.toLowerCase().includes("rma") || p.code.toLowerCase().includes("rma") || p.id.toLowerCase().includes("rma");
+          if (isRMA) {
+            sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+          } else {
+            sumEqRO += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+          }
         } else if (p.group === "BG") {
           sumEqBG += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
         }
       });
 
       const workersRO = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0);
+      const workersRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
       const workersBG = (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
 
       let prodPctRO = 0;
@@ -1990,13 +2544,18 @@ export default function App() {
         prodPctRO = Number(((sumEqRO / (workersRO * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
       }
       
+      let prodPctRMA = 0;
+      if (workersRMA > 0) {
+        prodPctRMA = Number(((sumEqRMA / (workersRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
+      }
+
       let prodPctBG = 0;
       if (workersBG > 0) {
         prodPctBG = Number(((sumEqBG / (workersBG * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
       }
 
-      const totalWorkers = workersRO + workersBG;
-      const totalEq = sumEqRO + sumEqBG;
+      const totalWorkers = workersRO + workersRMA + workersBG;
+      const totalEq = sumEqRO + sumEqRMA + sumEqBG;
       let prodPctDCLR = 0;
       if (totalWorkers > 0) {
         prodPctDCLR = Number(((totalEq / (totalWorkers * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
@@ -2005,11 +2564,12 @@ export default function App() {
       return {
         slot,
         "DCRO": prodPctRO,
+        "DCRMA": prodPctRMA,
         "DCBG": prodPctBG,
         "DCLR": prodPctDCLR
       };
     });
-  }, [formSlots, formModelItems, products, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersBG, formSeasonalWorkersBG]);
+  }, [formSlots, formModelItems, products, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG]);
 
   // --- EVENT HANDLERS ---
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2062,15 +2622,34 @@ export default function App() {
       const equivalentProducts = Math.round(actualUnits * prodDef.factor);
 
       // Determine Line ID & Name based on Product Group
-      const isRO = prodDef.group === "MLN";
-      const lineId = isRO ? "line-mln-01" : "line-bg-02";
-      const lineName = isRO ? "DCRO" : "DCBG";
+      const isMLN = prodDef.group === "MLN";
+      const isRMA = prodDef.group === "RMA" || prodDef.name.toLowerCase().includes("rma") || prodDef.code.toLowerCase().includes("rma") || prodDef.id.toLowerCase().includes("rma");
+      
+      let lineId = "line-bg-02";
+      let lineName = "DCBG";
+      let workersCount = formWorkersCountBG;
+      let officialWorkers = formOfficialCountBG;
+      let seasonalWorkers = formSeasonalCountBG;
+      let hourlyWorkers = formHourlyWorkersBG;
+      let laborProductivityPercent = formAggregates.avgProductivityBG;
 
-      const workersCount = isRO ? formWorkersCountRO : formWorkersCountBG;
-      const officialWorkers = isRO ? formOfficialCountRO : formOfficialCountBG;
-      const seasonalWorkers = isRO ? formSeasonalCountRO : formSeasonalCountBG;
-      const hourlyWorkers = isRO ? formHourlyWorkersRO : formHourlyWorkersBG;
-      const laborProductivityPercent = isRO ? formAggregates.avgProductivityRO : formAggregates.avgProductivityBG;
+      if (isRMA) {
+        lineId = "line-rma-03";
+        lineName = "DCRMA";
+        workersCount = formWorkersCountRMA;
+        officialWorkers = formOfficialCountRMA;
+        seasonalWorkers = formSeasonalCountRMA;
+        hourlyWorkers = formHourlyWorkersRMA;
+        laborProductivityPercent = formAggregates.avgProductivityRMA;
+      } else if (isMLN) {
+        lineId = "line-mln-01";
+        lineName = "DCRO";
+        workersCount = formWorkersCountRO;
+        officialWorkers = formOfficialCountRO;
+        seasonalWorkers = formSeasonalCountRO;
+        hourlyWorkers = formHourlyWorkersRO;
+        laborProductivityPercent = formAggregates.avgProductivityRO;
+      }
 
       return {
         id: "log-" + (productionLogs.length + idx + 1) + "-" + Date.now() + "-" + idx,
@@ -2117,6 +2696,8 @@ export default function App() {
     setFormSlots(getShiftSlots("Ca HC (08:00 - 17:00)"));
     setFormOfficialWorkersRO({});
     setFormSeasonalWorkersRO({});
+    setFormOfficialWorkersRMA({});
+    setFormSeasonalWorkersRMA({});
     setFormOfficialWorkersBG({});
     setFormSeasonalWorkersBG({});
     setFormModelItems(() => [{
@@ -2225,6 +2806,20 @@ export default function App() {
 
   const handleUpdateSeasonalWorkerRO = (slot: string, value: number) => {
     setFormSeasonalWorkersRO((prev) => ({
+      ...prev,
+      [slot]: value,
+    }));
+  };
+
+  const handleUpdateOfficialWorkerRMA = (slot: string, value: number) => {
+    setFormOfficialWorkersRMA((prev) => ({
+      ...prev,
+      [slot]: value,
+    }));
+  };
+
+  const handleUpdateSeasonalWorkerRMA = (slot: string, value: number) => {
+    setFormSeasonalWorkersRMA((prev) => ({
       ...prev,
       [slot]: value,
     }));
@@ -3046,12 +3641,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-rose-500/10 selection:text-rose-900 light-theme">
       {/* STICKY HEADER & NAVIGATION CONTAINER */}
-      <div className="sticky top-0 z-50 w-full bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-xl transition-all duration-300">
+      <div className="sticky top-0 z-50 w-full bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-xl will-change-transform">
         {/* HEADER BAR */}
-        <header className="transition-all duration-300">
-          <div className={`relative w-full max-w-[1800px] mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4 transition-all duration-300 ${isScrolled ? "py-1.5 min-h-[44px]" : "py-4 min-h-[72px]"}`}>
+        <header>
+          <div className={`relative w-full max-w-[1800px] mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4 transition-[padding,min-height] duration-300 ${isScrolled ? "py-1.5 min-h-[44px]" : "py-4 min-h-[72px]"}`}>
             {/* Left: Date info & System Status (positioned absolute on md+ or simplified when scrolled, replacing brand identity) */}
-            <div className={`flex items-center gap-3 transition-all duration-300 ${isScrolled ? "md:absolute md:left-4 scale-90" : "md:absolute md:left-4 scale-100"}`}>
+            <div className={`flex items-center gap-3 transition-transform duration-300 ${isScrolled ? "md:absolute md:left-4 scale-90" : "md:absolute md:left-4 scale-100"}`}>
               <div className="bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-300 font-mono flex items-center gap-2 shadow-inner text-xs">
                 <Calendar className="w-4 h-4 text-rose-500" />
                 <span className="font-bold">{(() => {
@@ -3061,17 +3656,19 @@ export default function App() {
                   const year = d.getFullYear();
                   return `${day}/${month}/${year}`;
                 })()}</span>
+                <span className="w-1 h-1 rounded-full bg-slate-700 mx-1"></span>
+                <DigitalClock />
               </div>
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="Hệ thống trực tuyến"></div>
             </div>
 
             {/* Center: Title (Cân giữa, to, rõ, in đậm, giữ nguyên kích thước khi cuộn) */}
-            <div className="text-center flex flex-col items-center justify-center max-w-xl md:max-w-2xl lg:max-w-4xl px-2 transition-all duration-300">
-              <h1 className="text-lg md:text-2xl lg:text-3xl font-black tracking-wider text-white uppercase drop-shadow-md transition-all duration-300">
+            <div className="text-center flex flex-col items-center justify-center max-w-xl md:max-w-2xl lg:max-w-4xl px-2 transition-[transform,opacity] duration-300">
+              <h1 className="text-lg md:text-2xl lg:text-3xl font-black tracking-wider text-white uppercase drop-shadow-md transition-transform duration-300">
                 BÁO CÁO SẢN XUẤT PHÂN XƯỞNG LẮP RÁP NMBD
               </h1>
               {!isScrolled && (
-                <p className="text-[11px] md:text-xs text-rose-500 font-bold mt-1 tracking-widest uppercase transition-all duration-300 animate-fadeIn">
+                <p className="text-[11px] md:text-xs text-rose-500 font-bold mt-1 tracking-widest uppercase transition-opacity duration-300 animate-fadeIn">
                   Hệ thống Quản lý Hiệu suất & Kế hoạch Sản xuất MES
                 </p>
               )}
@@ -3110,6 +3707,20 @@ export default function App() {
               >
                 <PlusCircle className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
                 <span>Ghi Nhật Ký Ca</span>
+              </button>
+              <button
+                id="tab-imei-tracking"
+                onClick={() => setActiveTab("imei-tracking")}
+                className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
+                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                } ${
+                  activeTab === "imei-tracking"
+                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                }`}
+              >
+                <Barcode className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
+                <span>Theo Dõi IMEI</span>
               </button>
               <button
                 id="tab-products"
@@ -3232,6 +3843,15 @@ export default function App() {
                       <Droplet className="w-3.5 h-3.5 text-cyan-400" /> DCRO
                     </button>
                     <button
+                      id="filter-rma"
+                      onClick={() => setFilterDivision("RMA")}
+                      className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                        filterDivision === "RMA" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <History className="w-3.5 h-3.5 text-amber-400" /> DCRMA
+                    </button>
+                    <button
                       id="filter-bg"
                       onClick={() => setFilterDivision("BG")}
                       className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
@@ -3278,7 +3898,7 @@ export default function App() {
                   }
                 </span>
                 <span className="text-slate-500 hidden sm:block">
-                  Lọc hiện tại: {filterDivision === "ALL" ? "Toàn bộ phân xưởng" : filterDivision === "MLN" ? "Dây chuyền RO" : "Dây chuyền Bếp Ga"} — Năm {selectedYear}
+                  Lọc hiện tại: {filterDivision === "ALL" ? "Toàn bộ phân xưởng" : filterDivision === "MLN" ? "Dây chuyền RO" : filterDivision === "RMA" ? "Dây chuyền RMA" : "Dây chuyền Bếp Ga"} — Năm {selectedYear}
                 </span>
               </div>
 
@@ -3521,37 +4141,39 @@ export default function App() {
               </div>
 
               {/* VISUAL CHART REPLACEMENT */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 h-[500px]">
-                <div className="mb-6">
+              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 h-[500px] flex flex-col">
+                <div className="mb-6 shrink-0">
                   <h4 className="text-sm font-semibold text-white">Biểu đồ Tổng quan Thống kê Sản xuất</h4>
                   <p className="text-[11px] text-slate-400">Trực quan hóa sản lượng và năng suất theo tháng</p>
                 </div>
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={displayMetrics} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
+                <div className="flex-1 min-h-0">
+                  <ResponsiveContainer width="99%" height="100%">
+                    <ComposedChart data={displayMetrics} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                     <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickFormatter={(v) => `Tháng ${v}`} />
-                    <YAxis yAxisId="left" stroke="#64748b" fontSize={11} domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
-                    <YAxis yAxisId="right" orientation="right" stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
+                    <YAxis yAxisId="left" stroke="#64748b" fontSize={11} domain={YAXIS_DOMAIN} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} />
                     <Tooltip
                       contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
                     />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="actualProducts" name="Sản lượng thực tế" fill="#94a3b8" radius={[2, 2, 0, 0]}>
+                    <Bar isAnimationActive={false} yAxisId="left" dataKey="actualProducts" name="Sản lượng thực tế" fill="#94a3b8" radius={[2, 2, 0, 0]}>
                       <LabelList dataKey="actualProducts" position="top" offset={3} fill="#94a3b8" fontSize={10} fontWeight="semibold" />
                     </Bar>
-                    <Bar yAxisId="left" dataKey="equivalentProducts" name="Sản lượng quy đổi" fill="#3b82f6" radius={[2, 2, 0, 0]}>
+                    <Bar isAnimationActive={false} yAxisId="left" dataKey="equivalentProducts" name="Sản lượng quy đổi" fill="#3b82f6" radius={[2, 2, 0, 0]}>
                       <LabelList dataKey="equivalentProducts" position="top" offset={3} fill="#3b82f6" fontSize={10} fontWeight="semibold" />
                     </Bar>
-                    <Line yAxisId="right" type="monotone" dataKey="laborProductivityPercent" name="Năng Suất (%)" stroke="#f97316" strokeWidth={2}>
+                    <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="laborProductivityPercent" name="Năng Suất (%)" stroke="#f97316" strokeWidth={2}>
                       <LabelList dataKey="laborProductivityPercent" position="top" offset={10} fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                     </Line>
                   </ComposedChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                </div>
               </div>
 
               {/* NEW CHART: OFFICIAL LABOR COMPARISON */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 h-[550px]">
-                <div className="flex items-center justify-between mb-6">
+              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 h-[550px] flex flex-col">
+                <div className="flex items-center justify-between mb-6 shrink-0">
                   <div>
                     <h4 className="text-sm font-semibold text-white">Biểu đồ So sánh NSLĐ</h4>
                     <p className="text-[11px] text-slate-400">So sánh năng suất lao động theo các mốc thời gian</p>
@@ -3567,21 +4189,23 @@ export default function App() {
                     <option value="yearly">Hàng Năm</option>
                   </select>
                 </div>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={nsldComparisonData} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
+                <div className="flex-1 min-h-0">
+                  <ResponsiveContainer width="99%" height="100%">
+                    <BarChart data={nsldComparisonData} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                     <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} domain={[0, (max: number) => Math.max(130, Math.ceil(max * 1.25))]} />
+                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} />
                     <Tooltip
                       contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
                       formatter={(value: number) => [`${value}%`, "NSLĐ"]}
                     />
                     <Legend />
-                    <Bar dataKey="value" name="NSLĐ (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
+                    <Bar isAnimationActive={false} dataKey="value" name="NSLĐ (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
                       <LabelList dataKey="value" position="top" offset={3} fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                     </Bar>
                   </BarChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                </div>
               </div>
 
 
@@ -3626,7 +4250,7 @@ export default function App() {
                         <span className={`font-semibold px-2 py-0.2 rounded text-[10px] ${
                           log.productGroup === "MLN" ? "bg-cyan-940 text-cyan-400 border border-cyan-800" : "bg-orange-950 text-orange-400 border border-orange-850"
                         }`}>
-                          {log.productGroup === "MLN" ? "DCRO" : "DCBG"}
+                          {log.productGroup === "MLN" ? "DCRO" : log.productGroup === "RMA" ? "DCRMA" : "DCBG"}
                         </span>
                       </div>
 
@@ -3701,16 +4325,16 @@ export default function App() {
                     </span>
                   </div>
                   <div className="h-[380px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={displayMonthlyScrap.filter(r => r.scrapCost !== null)} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
+                    <ResponsiveContainer width="99%" height="100%">
+                      <BarChart data={chartMonthlyScrap} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" />
-                        <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} fontSize={11} stroke="#64748b" domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
+                        <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
-                        <Bar dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={35}>
+                        <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={35}>
                           <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${(v / 1000000).toFixed(1)}M`} />
                         </Bar>
                       </BarChart>
@@ -3730,16 +4354,16 @@ export default function App() {
                     </span>
                   </div>
                   <div className="h-[380px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={displayWeeklyScrap.filter(r => r.scrapCost !== null)} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
+                    <ResponsiveContainer width="99%" height="100%">
+                      <BarChart data={chartWeeklyScrap} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="week" fontSize={11} stroke="#64748b" />
-                        <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} fontSize={11} stroke="#64748b" domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
+                        <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
-                        <Bar dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={18}>
+                        <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={18}>
                           <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${(v / 1000000).toFixed(1)}M`} />
                         </Bar>
                       </BarChart>
@@ -3753,13 +4377,13 @@ export default function App() {
                 <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
                   <h4 className="text-sm font-semibold text-white mb-2">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tháng (%)</h4>
                   <div className="h-[320px]">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="99%" height="100%">
                       <LineChart data={displayMonthlyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" />
-                        <YAxis domain={[0, (max: number) => Math.max(6, Math.ceil(max * 1.25))]} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
+                        <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
-                        <Line type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
+                        <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
                           <LabelList dataKey="errorRate" position="top" fill="#fbbf24" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                         </Line>
                       </LineChart>
@@ -3770,13 +4394,13 @@ export default function App() {
                 <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
                   <h4 className="text-sm font-semibold text-white mb-2">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tuần (%)</h4>
                   <div className="h-[320px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={displayWeeklyDclrError.filter(e => e.errorRate !== null)} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
+                    <ResponsiveContainer width="99%" height="100%">
+                      <LineChart data={chartWeeklyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="week" fontSize={11} stroke="#64748b" />
-                        <YAxis domain={[0, (max: number) => Math.max(4, Math.ceil(max * 1.25))]} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
+                        <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
-                        <Line type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
+                        <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
                           <LabelList dataKey="errorRate" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                         </Line>
                       </LineChart>
@@ -3886,44 +4510,9 @@ export default function App() {
                                 value={w.errorRate === null ? "" : w.errorRate}
                                 onChange={(e) => updateDclrErrorMetric("weekly", idx, e.target.value)}
                                 readOnly={w.errorRate !== null}
-                                className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] ${
                                   w.errorRate === null ? "text-slate-500 hover:bg-slate-800/50 focus:bg-slate-800" :
-                                  w.errorRate > 3 ? "text-rose-500 cursor-not-allowed" :
-                                  w.errorRate < 2 ? "text-emerald-400 cursor-not-allowed" : "text-amber-400 cursor-not-allowed"
-                                }`}
-                                placeholder="—"
-                              />
-                            </td>
-                          ))}
-                        </tr>
-
-                        <tr key="err-month-header-label" className="bg-slate-950 font-semibold">
-                          <td colSpan={13} className="py-2 px-3 text-rose-400 border-t border-slate-800 font-sans">
-                            Tỉ Lệ Lỗi Thao Tác DCLR THÁNG
-                          </td>
-                        </tr>
-                        <tr key="err-month-header-months" className="bg-slate-900/40 text-slate-400 border-b border-slate-850 font-mono text-[10px]">
-                          {displayMonthlyDclrError.map(m => (
-                            <td key={`tb3-m-${m.month}`} className="py-1.5 px-2 text-center border-l border-slate-850 font-semibold">T {m.month}</td>
-                          ))}
-                        </tr>
-                        <tr key="err-month-values" className="text-slate-350 font-mono">
-                          {displayMonthlyDclrError.map((m, idx) => (
-                            <td key={`tb3-mv-${m.month}`} className={`py-1 px-1 border-l border-slate-850 ${
-                              m.errorRate === null ? "" :
-                              m.errorRate > 4 ? "bg-rose-950" :
-                              ""
-                            }`}>
-                              <input 
-                                type="number" 
-                                step="0.1"
-                                value={m.errorRate === null ? "" : m.errorRate}
-                                onChange={(e) => updateDclrErrorMetric("monthly", idx, e.target.value)}
-                                readOnly={m.errorRate !== null}
-                                className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                                  m.errorRate === null ? "text-slate-500 hover:bg-slate-800/50 focus:bg-slate-800" :
-                                  m.errorRate > 4 ? "text-rose-450 cursor-not-allowed" :
-                                  m.errorRate < 3 ? "text-emerald-400 cursor-not-allowed" : "text-amber-500 cursor-not-allowed"
+                                  w.errorRate > 3 ? "text-rose-450 cursor-not-allowed" : "text-emerald-400 cursor-not-allowed"
                                 }`}
                                 placeholder="—"
                               />
@@ -3968,21 +4557,21 @@ export default function App() {
                 </div>
 
                 <div className="h-[500px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="99%" height="100%">
                     {chartTimeDimension === "monthly" ? (
                       <BarChart data={monthlyComparisonChartData} margin={{ top: 40, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="month" stroke="#64748b" fontSize={11} />
-                        <YAxis domain={[0, (max: number) => Math.max(140, Math.ceil(max * 1.25))]} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
+                        <YAxis domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
                           formatter={(value: any, name: any) => [`${value}%`, name === "productivity2025" ? "Năm 2025" : "Năm 2026"]}
                         />
                         <Legend formatter={(value: any) => value === "productivity2025" ? "2025" : "2026"} />
-                        <Bar dataKey="productivity2025" name="productivity2025" fill="#3b82f6" radius={[2, 2, 0, 0]}>
+                        <Bar isAnimationActive={false} dataKey="productivity2025" name="Năm 2025" fill="#3b82f6" radius={[2, 2, 0, 0]}>
                           <LabelList dataKey="productivity2025" position="top" fill="#3b82f6" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                         </Bar>
-                        <Bar dataKey="productivity2026" name="productivity2026" fill="#f97316" radius={[2, 2, 0, 0]}>
+                        <Bar isAnimationActive={false} dataKey="productivity2026" name="Năm 2026" fill="#f97316" radius={[2, 2, 0, 0]}>
                           <LabelList dataKey="productivity2026" position="top" fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                         </Bar>
                       </BarChart>
@@ -3990,12 +4579,12 @@ export default function App() {
                       <BarChart data={yearlyChartData} margin={{ top: 40, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="year" stroke="#64748b" fontSize={11} />
-                        <YAxis domain={[0, (max: number) => Math.max(140, Math.ceil(max * 1.25))]} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
+                        <YAxis domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
                           formatter={(value: any) => [`${value}%`, "Hiệu suất lao động"]}
                         />
-                        <Bar dataKey="productivity" name="Hiệu suất lao động (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
+                        <Bar isAnimationActive={false} dataKey="productivity" name="Hiệu suất lao động (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
                           <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                         </Bar>
                       </BarChart>
@@ -4003,15 +4592,15 @@ export default function App() {
                       <ComposedChart data={chartTimeDimension === "daily" ? dailyChartData : weeklyChartData} margin={{ top: 40, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey={chartTimeDimension === "daily" ? "date" : "week"} stroke="#64748b" fontSize={11} />
-                        <YAxis yAxisId="left" stroke="#64748b" fontSize={11} domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, (max: number) => Math.max(140, Math.ceil(max * 1.25))]} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
+                        <YAxis yAxisId="left" stroke="#64748b" fontSize={11} domain={YAXIS_DOMAIN} />
+                        <YAxis yAxisId="right" orientation="right" domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
                           formatter={(value: any, name: any) => [name === "nsld" ? `${value}%` : value, name === "nsld" ? "Năng suất (%)" : "Sản lượng quy đổi"]}
                         />
                         <Legend formatter={(value: any) => value === "nsld" ? "Năng suất LĐ (%)" : "Sản lượng quy đổi"} />
-                        <Bar yAxisId="left" dataKey="output" name="output" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                        <Line yAxisId="right" type="monotone" dataKey="nsld" name="nsld" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4, fill: "#f43f5e", strokeWidth: 2, stroke: "#020617" }} activeDot={{ r: 6 }} />
+                        <Bar isAnimationActive={false} yAxisId="left" dataKey="output" name="output" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                        <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="nsld" name="nsld" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4, fill: "#f43f5e", strokeWidth: 2, stroke: "#020617" }} activeDot={{ r: 6 }} />
                       </ComposedChart>
                     )}
                   </ResponsiveContainer>
@@ -4019,13 +4608,562 @@ export default function App() {
               </div>
             </div>
           ) : null}
-
         </motion.div>
       )}
 
 
           {/* ACTIVE TAB: LOGGING INPUT FORM */}
-          {activeTab === "logging" && (
+          
+        {activeTab === "imei-tracking" && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col gap-2">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Barcode className="w-6 h-6 text-rose-500" />
+                Theo Dõi IMEI Sản Xuất
+              </h2>
+              <p className="text-sm text-slate-400">
+                Danh sách các mã IMEI đã quét và lưu vào hệ thống.
+              </p>
+            </div>
+
+
+            {/* KHAI BÁO IMEI */}
+            <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden flex flex-col p-4 space-y-4">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <FileText className="w-4 h-4 text-emerald-500" />
+                Khai Báo IMEI KHSX
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Ngày KHSX</label>
+                  <input
+                    type="date"
+                    id="declareImeiDate"
+                    value={selectedDeclareDate}
+                    onChange={(e) => setSelectedDeclareDate(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-sans"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mã Sản Phẩm {filteredDeclareProducts.length === 0 && <span className="text-rose-500 normal-case">(Chưa có KHSX ngày này)</span>}</label>
+                  <select
+                    id="declareImeiProduct"
+                    value={selectedDeclareProductId}
+                    onChange={(e) => setSelectedDeclareProductId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-sans"
+                  >
+                    {filteredDeclareProducts.length > 0 ? (
+                      filteredDeclareProducts.map(p => (
+                        <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                      ))
+                    ) : (
+                      <option value="">-- Không có model sản xuất --</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                {/* Quick Scan Input */}
+                <div className="bg-slate-900/40 p-5 rounded-lg border border-slate-800 space-y-4">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Quét IMEI Khai Báo (KHSX)</label>
+                    <div className="flex items-center gap-3">
+                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-700 flex items-center justify-center">
+                        <Barcode className="w-6 h-6 text-emerald-500" />
+                      </div>
+                      <input
+                        type="text"
+                        id="declareImeiInputEl"
+                        placeholder={filteredDeclareProducts.length > 0 ? "Quét IMEI vào đây để lưu trực tiếp vào danh sách..." : "Không có KHSX - Vui lòng chọn ngày khác..."}
+                        value={declareImeiInput}
+                        disabled={filteredDeclareProducts.length === 0}
+                        onChange={(e) => setDeclareImeiInput(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleDeclareImeiSubmit(declareImeiInput);
+                          }
+                        }}
+                        className={`flex-1 bg-slate-950 border border-slate-700 rounded-xl p-3.5 text-white font-mono focus:border-emerald-500 outline-none placeholder-slate-600 text-sm shadow-inner ${filteredDeclareProducts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      />
+                      <button
+                        type="button"
+                        disabled={filteredDeclareProducts.length === 0}
+                        onClick={() => handleDeclareImeiSubmit(declareImeiInput)}
+                        className={`bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-8 py-3.5 rounded-xl flex items-center justify-center shrink-0 text-sm cursor-pointer transition-all active:scale-95 shadow-lg shadow-emerald-900/20 ${filteredDeclareProducts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        Ghi Nhận
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 text-[11px] text-slate-500 italic bg-slate-950/50 p-3 rounded-lg border border-slate-800/50">
+                    <span className="text-emerald-500 font-bold not-italic">HƯỚNG DẪN:</span>
+                    <p>Đặt con trỏ vào ô nhập liệu và sử dụng máy quét. Mỗi mã IMEI hợp lệ sẽ được hệ thống kiểm tra đối chiếu KHSX và tự động lưu trực tiếp vào bảng danh sách phía dưới.</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
+              {/* SUB-TABS SELECTOR */}
+              <div className="flex border-b border-slate-200 bg-slate-100 p-1 gap-1">
+                <button
+                  onClick={() => setImeiSubTab("scanned")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    imeiSubTab === "scanned"
+                      ? "bg-rose-600 text-white shadow shadow-rose-600/10"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <ScanBarcode className="w-4 h-4" />
+                  Lịch Sử Quét Thực Tế ({scannedImeis.length})
+                </button>
+                <button
+                  onClick={() => setImeiSubTab("declared")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    imeiSubTab === "declared"
+                      ? "bg-emerald-600 text-white shadow shadow-emerald-600/10"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Danh Sách Khai Báo ({declaredImeis.length})
+                </button>
+                <button
+                  onClick={() => setImeiSubTab("compare")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    imeiSubTab === "compare"
+                      ? "bg-sky-600 text-white shadow shadow-sky-600/10"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Đối Chiếu & So Sánh Số Liệu
+                </button>
+              </div>
+
+              {/* VIEW 1: SCANNED HISTORY */}
+              {imeiSubTab === "scanned" && (
+                <>
+                  <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                     <div>
+                       <h3 className="text-white font-semibold flex items-center gap-2 text-sm">
+                          <List className="w-4 h-4 text-rose-500" />
+                          Lịch Sử Quét ({filteredScannedImeis.length})
+                       </h3>
+                       <p className="text-[11px] text-slate-400 mt-1">Truy xuất danh sách IMEI thực tế sản xuất tại xưởng.</p>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={imeiFilterDate}
+                          onChange={(e) => setImeiFilterDate(e.target.value)}
+                          className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-rose-500 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Tìm nhanh IMEI, Model..."
+                          value={imeiSearchTerm}
+                          onChange={(e) => setImeiSearchTerm(e.target.value)}
+                          className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors"
+                        />
+                     </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                      <thead>
+                        <tr className="bg-slate-900 border-b border-slate-800">
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Thời Gian</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã Model</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Khung Giờ</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-right">Thao Tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {filteredScannedImeis.length > 0 ? (
+                          filteredScannedImeis.map((item) => {
+                            const prod = products.find(p => p.id === item.productId);
+                            return (
+                              <tr key={item.id} className="hover:bg-slate-900/50 transition">
+                                <td className="p-3 text-sm text-slate-300 font-mono">
+                                   {new Date(item.timestamp).toLocaleString("vi-VN")}
+                                </td>
+                                <td className="p-3 text-sm text-emerald-400 font-mono font-bold">
+                                   {item.imei}
+                                </td>
+                                <td className="p-3 text-sm text-slate-200">
+                                   {prod?.code || item.productId}
+                                </td>
+                                <td className="p-3 text-sm text-slate-400 truncate max-w-[200px]" title={prod?.name || "N/A"}>
+                                   {prod?.name || "N/A"}
+                                </td>
+                                <td className="p-3 text-sm text-rose-400 font-mono">
+                                   {item.slot}
+                                </td>
+                                <td className="p-3 text-right">
+                                   {deleteConfirmId === item.id ? (
+                                     <div className="flex items-center justify-end gap-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                       <span className="text-[10px] text-slate-400 font-sans">Xóa?</span>
+                                       <button
+                                         onClick={() => {
+                                           setScannedImeis(prev => prev.filter(x => x.id !== item.id));
+                                           setDeleteConfirmId(null);
+                                         }}
+                                         className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold cursor-pointer"
+                                       >
+                                         Xác Nhận
+                                       </button>
+                                       <button
+                                         onClick={() => setDeleteConfirmId(null)}
+                                         className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
+                                       >
+                                         Hủy
+                                       </button>
+                                     </div>
+                                   ) : (
+                                     <button 
+                                       onClick={() => setDeleteConfirmId(item.id)}
+                                       className="text-rose-500 hover:text-rose-400 p-1 cursor-pointer"
+                                       title="Xóa"
+                                     >
+                                       <Trash2 className="w-4 h-4" />
+                                     </button>
+                                   )}
+                                 </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
+                              Chưa có dữ liệu IMEI nào được quét phù hợp với bộ lọc.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* VIEW 2: DECLARED HISTORY */}
+              {imeiSubTab === "declared" && (
+                <>
+                  <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                     <div>
+                       <h3 className="text-white font-semibold flex items-center gap-2 text-sm">
+                          <FileText className="w-4 h-4 text-emerald-500" />
+                          Danh Sách IMEI Đã Khai Báo KHSX ({filteredDeclaredImeis.length})
+                       </h3>
+                       <p className="text-[11px] text-slate-400 mt-1">Truy xuất kế hoạch sản xuất IMEI đã được nạp trước.</p>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={declareFilterDate}
+                          onChange={(e) => setDeclareFilterDate(e.target.value)}
+                          className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Tìm nhanh IMEI, Model..."
+                          value={declareSearchTerm}
+                          onChange={(e) => setDeclareSearchTerm(e.target.value)}
+                          className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                        />
+                     </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                      <thead>
+                        <tr className="bg-slate-900 border-b border-slate-800">
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ngày Khai Báo</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã Model</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Trạng Thái</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-right">Thao Tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {filteredDeclaredImeis.length > 0 ? (
+                          filteredDeclaredImeis.map((item, index) => {
+                            const prod = products.find(p => p.id === item.productId);
+                            const isAlreadyScanned = scannedImeis.some(s => s.imei === item.imei);
+                            return (
+                              <tr key={`${item.imei}-${index}`} className="hover:bg-slate-900/50 transition">
+                                <td className="p-3 text-sm text-slate-300 font-mono">
+                                   {item.date}
+                                </td>
+                                <td className="p-3 text-sm text-emerald-400 font-mono font-bold">
+                                   {item.imei}
+                                </td>
+                                <td className="p-3 text-sm text-slate-200">
+                                   {prod?.code || item.productId}
+                                </td>
+                                <td className="p-3 text-sm text-slate-400 truncate max-w-[200px]" title={prod?.name || "N/A"}>
+                                   {prod?.name || "N/A"}
+                                </td>
+                                <td className="p-3 text-xs">
+                                   {isAlreadyScanned ? (
+                                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                                       Đã Quét Thực Tế
+                                     </span>
+                                   ) : (
+                                     <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
+                                       Chưa Sản Xuất
+                                     </span>
+                                   )}
+                                </td>
+                                <td className="p-3 text-right">
+                                   {deleteDeclareConfirmImei === item.imei ? (
+                                     <div className="flex items-center justify-end gap-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                       <span className="text-[10px] text-slate-400 font-sans">Xóa?</span>
+                                       <button
+                                         onClick={() => {
+                                           setDeclaredImeis(prev => prev.filter(x => x.imei !== item.imei));
+                                           setDeleteDeclareConfirmImei(null);
+                                         }}
+                                         className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold cursor-pointer"
+                                       >
+                                         Xác Nhận
+                                       </button>
+                                       <button
+                                         onClick={() => setDeleteDeclareConfirmImei(null)}
+                                         className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] cursor-pointer"
+                                       >
+                                         Hủy
+                                       </button>
+                                     </div>
+                                   ) : (
+                                     <button 
+                                       onClick={() => setDeleteDeclareConfirmImei(item.imei)}
+                                       className="text-rose-500 hover:text-rose-400 p-1 cursor-pointer"
+                                       title="Xóa Khai Báo"
+                                     >
+                                       <Trash2 className="w-4 h-4" />
+                                     </button>
+                                   )}
+                                 </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
+                              Không tìm thấy IMEI khai báo nào phù hợp với bộ lọc.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* VIEW 3: DETAILED COMPARISON AND DISCREPANCY ANALYSIS */}
+              {imeiSubTab === "compare" && (
+                <>
+                  {/* METRICS PANEL */}
+                  <div className="p-4 bg-slate-900/40 border-b border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400">Tổng IMEI Khai Báo</div>
+                      <div className="text-lg font-bold text-white mt-0.5 font-mono">
+                        {comparisonRecords.filter(r => r.status === "matched" || r.status === "missing").length}
+                      </div>
+                    </div>
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400">Thực Tế Đã Quét</div>
+                      <div className="text-lg font-bold text-rose-400 mt-0.5 font-mono">
+                        {scannedImeis.length}
+                      </div>
+                    </div>
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400">Đã Trùng Khớp</div>
+                      <div className="text-lg font-bold text-emerald-400 mt-0.5 font-mono">
+                        {comparisonRecords.filter(r => r.status === "matched").length}
+                      </div>
+                    </div>
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                      <div className="text-[10px] uppercase font-semibold text-slate-400">Tỷ Lệ Trùng Khớp</div>
+                      <div className="text-lg font-bold text-sky-400 mt-0.5 font-mono">
+                        {(() => {
+                          const declCount = comparisonRecords.filter(r => r.status === "matched" || r.status === "missing").length;
+                          const matchedCount = comparisonRecords.filter(r => r.status === "matched").length;
+                          return declCount > 0 ? `${Math.round((matchedCount / declCount) * 100)}%` : "0%";
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CONTROLS AREA */}
+                  <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 bg-slate-950/20">
+                     <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-slate-400 font-medium">Lọc Trạng Thái:</span>
+                        <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800 gap-1 flex-wrap">
+                          <button
+                            onClick={() => setCompareStatusFilter("all")}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                              compareStatusFilter === "all" ? "bg-slate-800 text-white" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            }`}
+                          >
+                            Tất cả ({filteredComparisonRecords.length})
+                          </button>
+                          <button
+                            onClick={() => setCompareStatusFilter("matched")}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                              compareStatusFilter === "matched" ? "bg-emerald-950 text-emerald-400 border border-emerald-800/30" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            }`}
+                          >
+                            Khớp ({comparisonRecords.filter(r => r.status === "matched").length})
+                          </button>
+                          <button
+                            onClick={() => setCompareStatusFilter("missing")}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                              compareStatusFilter === "missing" ? "bg-amber-950 text-amber-400 border border-amber-800/30" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            }`}
+                          >
+                            Sót / Chưa Quét ({comparisonRecords.filter(r => r.status === "missing").length})
+                          </button>
+                          <button
+                            onClick={() => setCompareStatusFilter("un-declared")}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                              compareStatusFilter === "un-declared" ? "bg-rose-950 text-rose-400 border border-rose-800/30" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            }`}
+                          >
+                            Quét Ngoài KHSX ({comparisonRecords.filter(r => r.status === "un-declared").length})
+                          </button>
+                        </div>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={imeiFilterDate}
+                          onChange={(e) => setImeiFilterDate(e.target.value)}
+                          className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500 transition-colors"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Tra cứu IMEI..."
+                          value={imeiSearchTerm}
+                          onChange={(e) => setImeiSearchTerm(e.target.value)}
+                          className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-colors"
+                        />
+                        <button
+                          onClick={() => {
+                            const dataToExport = filteredComparisonRecords.map(r => {
+                              const prod = products.find(p => p.id === r.productId);
+                              const statusText = r.status === "matched" ? "Đã khớp (Đã sản xuất)" :
+                                                 r.status === "missing" ? "Thiếu (Chưa quét)" : "Quét ngoài KHSX";
+                              return {
+                                "Mã IMEI": r.imei,
+                                "Mã Sản Phẩm": prod?.code || r.productId,
+                                "Tên Sản Phẩm": prod?.name || "N/A",
+                                "Ngày Khai Báo (KHSX)": r.declareDate || "N/A",
+                                "Thời Gian Quét Thực Tế": r.scanTimestamp ? new Date(r.scanTimestamp).toLocaleString("vi-VN") : "N/A",
+                                "Khung Giờ Quét": r.scanSlot || "N/A",
+                                "Trạng Thái Đối Chiếu": statusText
+                              };
+                            });
+
+                            const ws = XLSX.utils.json_to_sheet(dataToExport);
+                            const wb = XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(wb, ws, "Doi_Chieu_IMEI");
+                            XLSX.writeFile(wb, `Doi_Chieu_IMEI_Sunhouse_${imeiFilterDate || "Tat_Ca"}.xlsx`);
+                          }}
+                          className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          Xuất File Đối Chiếu (Excel)
+                        </button>
+                     </div>
+                  </div>
+
+                  {/* COMPARISON TABLE */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                      <thead>
+                        <tr className="bg-slate-900 border-b border-slate-800">
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã Model</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ngày Khai Báo (KHSX)</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Thời Gian Quét</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Khung Giờ Quét</th>
+                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Kết Quả Đối Chiếu</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {filteredComparisonRecords.length > 0 ? (
+                          filteredComparisonRecords.map((item, idx) => {
+                            const prod = products.find(p => p.id === item.productId);
+                            return (
+                              <tr key={`${item.imei}-${idx}`} className="hover:bg-slate-900/50 transition">
+                                <td className="p-3 text-sm text-slate-100 font-mono font-bold">
+                                   {item.imei}
+                                </td>
+                                <td className="p-3 text-sm text-slate-300">
+                                   {prod?.code || item.productId}
+                                </td>
+                                <td className="p-3 text-sm text-slate-400 truncate max-w-[200px]" title={prod?.name || "N/A"}>
+                                   {prod?.name || "N/A"}
+                                </td>
+                                <td className="p-3 text-sm text-slate-400 font-mono">
+                                   {item.declareDate || <span className="text-slate-600 font-sans">— (Không khai báo)</span>}
+                                </td>
+                                <td className="p-3 text-sm text-slate-400 font-mono">
+                                   {item.scanTimestamp ? new Date(item.scanTimestamp).toLocaleString("vi-VN") : <span className="text-slate-600 font-sans">— (Chưa sản xuất)</span>}
+                                </td>
+                                <td className="p-3 text-sm text-rose-400 font-mono">
+                                   {item.scanSlot || <span className="text-slate-600 font-sans">—</span>}
+                                </td>
+                                <td className="p-3 text-xs">
+                                  {item.status === "matched" && (
+                                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold flex items-center gap-1 w-fit">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                      Đã Khớp (Đúng KHSX)
+                                    </span>
+                                  )}
+                                  {item.status === "missing" && (
+                                    <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold flex items-center gap-1 w-fit">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                      Sót (Chưa Sản Xuất)
+                                    </span>
+                                  )}
+                                  {item.status === "un-declared" && (
+                                    <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold flex items-center gap-1 w-fit">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                                      Quét Ngoài KHSX
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-slate-500 text-sm">
+                              Không tìm thấy bản ghi đối chiếu nào phù hợp.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+{activeTab === "logging" && (
             <motion.div
               key="logging"
               initial={{ opacity: 0, y: 15 }}
@@ -4102,6 +5240,39 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* Máy quét mã vạch (Barcode Scanner) */}
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800/80 space-y-2">
+                      <label className="text-[11px] text-sky-400 font-mono uppercase flex items-center gap-1">
+                        <ScanBarcode className="w-3 h-3" /> Quét mã IMEI (Tự động cộng 1 vào khung giờ hiện tại)
+                      </label>
+                      <div className="flex gap-2 items-center">
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-800 text-sky-400 font-mono text-[10px] px-3 flex items-center gap-1.5 shrink-0 select-none">
+                          <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></div>
+                          TỰ ĐỘNG NHẬN DIỆN MODEL
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Đặt con trỏ chuột vào đây và quét IMEI..."
+                          value={scanInput}
+                          onChange={(e) => setScanInput(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => {
+                             if (e.key === 'Enter') {
+                               e.preventDefault();
+                               handleScanSubmit(e.currentTarget.value.toUpperCase());
+                             }
+                          }}
+                          className="flex-1 bg-slate-950 border border-slate-700 rounded p-1.5 text-white font-mono focus:border-sky-500 outline-none placeholder-slate-600 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleScanSubmit(scanInput)}
+                          className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-1.5 rounded flex items-center justify-center shrink-0 text-xs cursor-pointer transition-colors"
+                        >
+                          Ghi Nhận
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Matrix Input Table */}
                     <div className="overflow-x-auto border border-slate-800 rounded-lg shadow-xl shadow-slate-950">
                       <table className="matrix-table w-full text-[12px] font-mono whitespace-nowrap text-center">
@@ -4142,7 +5313,9 @@ export default function App() {
                             })
                             .map((item, idx) => {
                             const prodDef = products.find((p) => p.id === item.productId) || products[0];
-                            const modelActual = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
+      if (!prodDef) return;
+      
+      const modelActual = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
                             return (
                               <tr key={item.id} className="hover:bg-slate-900/50 transition">
                                 <td className="py-1 px-1 sticky left-0 bg-slate-950 z-10 text-left border-r border-slate-800 min-w-[160px] w-[160px]">
@@ -4300,7 +5473,8 @@ export default function App() {
                                 let sumEqRO = 0;
                                 formModelItems.forEach(item => {
                                   const p = products.find(x => x.id === item.productId) || products[0];
-                                  if (p.group === "MLN") {
+        if (!p) return;
+        if (p.group === "MLN") {
                                     sumEqRO += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
                                   }
                                 });
@@ -4316,6 +5490,42 @@ export default function App() {
                                 )
                               })}
                               <td className="py-1 px-1 border-r border-slate-800 text-emerald-400">{formAggregates.avgProductivityRO}%</td>
+                              <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
+                              <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
+                              <td></td>
+                            </tr>
+                          )}
+
+                          {/* Productivity RMA % */}
+                          {(filterDivision === "ALL" || filterDivision === "MLN") && (
+                            <tr key="productivity-rma-row" className="bg-slate-900 font-bold border-t border-slate-800">
+                              <td colSpan={3} className="py-1 px-1 text-right text-amber-400 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
+                                NSLĐ DCRMA (%)
+                              </td>
+                              {formSlots.map(slot => {
+                                let sumEqRMA = 0;
+                                formModelItems.forEach(item => {
+                                  const p = products.find(x => x.id === item.productId) || products[0];
+                                  if (!p) return;
+                                  if (p.group === "MLN") {
+                                    const isRMA = p.name.toLowerCase().includes("rma") || p.code.toLowerCase().includes("rma") || p.id.toLowerCase().includes("rma");
+                                    if (isRMA) {
+                                      sumEqRMA += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
+                                    }
+                                  }
+                                });
+                                const workersRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
+                                let prodPct = 0;
+                                if (workersRMA > 0) {
+                                  prodPct = Number(((sumEqRMA / (workersRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
+                                }
+                                return (
+                                  <td key={slot} className={`py-1 px-1 border-r border-slate-800 min-w-[80px] w-[80px] text-center ${prodPct >= 100 ? "text-emerald-400" : prodPct > 0 ? "text-amber-400" : "text-rose-400"}`}>
+                                    {prodPct > 0 ? `${prodPct}%` : "-"}
+                                  </td>
+                                )
+                              })}
+                              <td className="py-1 px-1 border-r border-slate-800 text-amber-400">{formAggregates.avgProductivityRMA}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -4462,6 +5672,77 @@ export default function App() {
                               <tr key="ro-spacer" className="h-2 bg-slate-950">
                                 <td colSpan={formSlots.length + 7}></td>
                               </tr>
+
+                              {/* --- worker tracking: LINE RMA --- */}
+                              <tr key="rma-header" className="bg-amber-950/20 border-t border-amber-900/50">
+                                <td colSpan={3} className="py-1 px-1 text-left pl-2 text-amber-400 font-bold border-r border-slate-800 sticky left-0 bg-slate-950 z-10 whitespace-nowrap">
+                                  📍 DÂY CHUYỀN LẮP RÁP RMA (RW)
+                                </td>
+                                <td colSpan={formSlots.length + 4}></td>
+                              </tr>
+
+                              <tr key="rma-official-workers" className="bg-slate-900/40">
+                                <td colSpan={3} className="py-0.5 px-2 text-right text-rose-300 font-bold border-r border-slate-800 sticky left-0 bg-slate-900/40 z-10 pl-4 whitespace-nowrap">
+                                  ↳ NS CHÍNH THỨC RMA
+                                </td>
+                                {formSlots.map(slot => (
+                                  <td key={slot} className="p-0 border-r border-slate-800 min-w-[80px] w-[80px]">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={formOfficialWorkersRMA[slot] !== undefined ? formOfficialWorkersRMA[slot] : ""}
+                                      onChange={(e) => handleUpdateOfficialWorkerRMA(slot, parseInt(e.target.value) || 0)}
+                                      className="w-full h-full min-h-[30px] bg-transparent text-center text-rose-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                  </td>
+                                ))}
+                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountRMA}</td>
+                                <td className="border-r border-slate-800"></td>
+                                <td className="border-r border-slate-800"></td>
+                                <td></td>
+                              </tr>
+
+                              <tr key="rma-seasonal-workers" className="bg-slate-900/40">
+                                <td colSpan={3} className="py-0.5 px-2 text-right text-amber-300 font-bold border-r border-slate-800 sticky left-0 bg-slate-900/40 z-10 pl-4 whitespace-nowrap">
+                                  ↳ NS THỜI VỤ RMA
+                                </td>
+                                {formSlots.map(slot => (
+                                  <td key={slot} className="p-0 border-r border-slate-800 min-w-[80px] w-[80px]">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={formSeasonalWorkersRMA[slot] !== undefined ? formSeasonalWorkersRMA[slot] : ""}
+                                      onChange={(e) => handleUpdateSeasonalWorkerRMA(slot, parseInt(e.target.value) || 0)}
+                                      className="w-full h-full min-h-[30px] bg-transparent text-center text-amber-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                  </td>
+                                ))}
+                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountRMA}</td>
+                                <td className="border-r border-slate-800"></td>
+                                <td className="border-r border-slate-800"></td>
+                                <td></td>
+                              </tr>
+
+                              <tr key="rma-total-workers" className="bg-amber-950/30">
+                                <td colSpan={3} className="py-1 px-2 text-right text-amber-400 font-bold border-r border-slate-800 sticky left-0 bg-amber-950/90 z-10 pl-4 whitespace-nowrap">
+                                  ↳ Tổng nhân sự DCRMA
+                                </td>
+                                {formSlots.map(slot => (
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-800 text-amber-400 font-bold min-w-[80px] w-[80px] text-center">
+                                    {(formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0)}
+                                  </td>
+                                ))}
+                                <td className="py-1 px-1 border-r border-slate-800 text-amber-400 font-bold text-center">
+                                  {formWorkersCountRMA}
+                                </td>
+                                <td className="border-r border-slate-800"></td>
+                                <td className="border-r border-slate-800"></td>
+                                <td></td>
+                              </tr>
+
+                              <tr key="rma-spacer" className="h-2 bg-slate-950">
+                                <td colSpan={formSlots.length + 7}></td>
+                              </tr>
                             </React.Fragment>
                           )}
 
@@ -4545,10 +5826,10 @@ export default function App() {
                           {filterDivision === "ALL" && (
                             <tr key="grand-total-workers" className="bg-slate-900 border-t border-slate-700">
                               <td colSpan={3} className="py-1 px-1 text-right text-white font-bold border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
-                                Tổng nhân sự Phân Xưởng LR (RO + BG)
+                                Tổng nhân sự Phân Xưởng LR (RO + RMA + BG)
                               </td>
                               {formSlots.map(slot => {
-                                const totalH = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0) + (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
+                                const totalH = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0) + (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0) + (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
                                 return (
                                   <td key={slot} className="py-1 px-1 border-r border-slate-800 text-white font-bold min-w-[80px] w-[80px] text-center">
                                     {totalH}
@@ -4576,11 +5857,11 @@ export default function App() {
                           Biểu đồ NSLĐ từng khung giờ
                         </h4>
                         <div className="h-[360px] w-full mt-2">
-                          <ResponsiveContainer width="100%" height="100%">
+                          <ResponsiveContainer width="99%" height="100%">
                             <ComposedChart data={formHourlyChartData} margin={{ top: 40, right: 10, left: -20, bottom: 5 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                               <XAxis dataKey="slot" stroke="#64748b" fontSize={10} tickMargin={5} />
-                              <YAxis domain={[0, (max: number) => Math.max(150, Math.ceil(max * 1.25))]} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={10} />
+                              <YAxis domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={10} />
                               <Tooltip
                                 contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "6px" }}
                                 itemStyle={{ fontSize: "11px" }}
@@ -4590,13 +5871,16 @@ export default function App() {
                               />
                               <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                               <ReferenceLine y={kpis.monthTarget} stroke="#10b981" strokeDasharray="3 3" />
-                              <Bar dataKey="DCRO" name="NSLĐ DCRO" fill="#10b981" radius={[2, 2, 0, 0]}>
+                              <Bar isAnimationActive={false} dataKey="DCRO" name="NSLĐ DCRO" fill="#10b981" radius={[2, 2, 0, 0]}>
                                 <LabelList dataKey="DCRO" position="top" offset={5} fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                               </Bar>
-                              <Bar dataKey="DCBG" name="NSLĐ DCBG" fill="#0ea5e9" radius={[2, 2, 0, 0]}>
+                              <Bar isAnimationActive={false} dataKey="DCRMA" name="NSLĐ DCRMA" fill="#f59e0b" radius={[2, 2, 0, 0]}>
+                                <LabelList dataKey="DCRMA" position="top" offset={5} fill="#f59e0b" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                              </Bar>
+                              <Bar isAnimationActive={false} dataKey="DCBG" name="NSLĐ DCBG" fill="#0ea5e9" radius={[2, 2, 0, 0]}>
                                 <LabelList dataKey="DCBG" position="top" offset={5} fill="#0ea5e9" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                               </Bar>
-                              <Line type="monotone" dataKey="DCLR" name="NSLĐ Phân Xưởng LR" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4, fill: "#f43f5e" }} activeDot={{ r: 6 }}>
+                              <Line isAnimationActive={false} type="monotone" dataKey="DCLR" name="NSLĐ Phân Xưởng LR" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4, fill: "#f43f5e" }} activeDot={{ r: 6 }}>
                                 <LabelList dataKey="DCLR" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} offset={12} />
                               </Line>
                             </ComposedChart>
@@ -4694,17 +5978,17 @@ export default function App() {
                     {/* Local Division Selector for Logs */}
                     <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg p-0.5">
                       <span className="text-[10px] text-slate-500 font-mono uppercase pl-2 pr-1 hidden sm:inline">Lọc tổ:</span>
-                      {(["ALL", "MLN", "BG"] as const).map(div => (
-                        <button
-                          key={div}
-                          type="button"
-                          onClick={() => setFilterDivision(div)}
-                          className={`px-2.5 py-1 rounded text-[11px] font-semibold transition cursor-pointer ${
-                            filterDivision === div ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          {div === "ALL" ? "Tất cả" : div === "MLN" ? "DCRO" : "DCBG"}
-                        </button>
+                      {(["ALL", "MLN", "RMA", "BG"] as const).map(div => (
+                          <button
+                            key={div}
+                            type="button"
+                            onClick={() => setFilterDivision(div)}
+                            className={`px-2.5 py-1 rounded text-[11px] font-semibold transition cursor-pointer ${
+                              filterDivision === div ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            {div === "ALL" ? "Tất cả" : div === "MLN" ? "DCRO" : div === "RMA" ? "DCRMA (RMA)" : "DCBG"}
+                          </button>
                       ))}
                     </div>
                   </div>
@@ -4851,37 +6135,39 @@ export default function App() {
                       </div>
 
                       {/* HOURLY DISTRIBUTION VISUAL GRAPH */}
-                      <div className="h-[380px] bg-slate-1000 p-3.5 rounded-lg border border-slate-850">
-                        <h4 className="text-slate-300 text-[11px] font-semibold font-mono uppercase mb-3 text-center flex items-center justify-center gap-1.5">
+                      <div className="h-[380px] bg-slate-1000 p-3.5 rounded-lg border border-slate-850 flex flex-col">
+                        <h4 className="text-slate-300 text-[11px] font-semibold font-mono uppercase mb-3 text-center flex items-center justify-center gap-1.5 shrink-0">
                           <Clock className="w-4 h-4 text-rose-500" />
                           Phân bổ sản lượng lắp ráp theo khung giờ 1h / ca làm việc {recordsFilterDate !== "ALL" ? `- Ngày ${recordsFilterDate}` : "(Sát thực các ngày)"}
                         </h4>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={hourlyChartData} margin={{ top: 40, right: 30, left: -25, bottom: 5 }}>
+                        <div className="flex-1 min-h-0">
+                          <ResponsiveContainer width="99%" height="100%">
+                            <ComposedChart data={hourlyChartData} margin={{ top: 40, right: 30, left: -25, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                             <XAxis
                               dataKey="slotName"
                               tick={{ fill: "#94a3b8", fontSize: 9 }}
                               axisLine={{ stroke: "#334155" }}
                             />
-                            <YAxis yAxisId="left" tick={{ fill: "#94a3b8", fontSize: 9 }} axisLine={{ stroke: "#334155" }} domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
-                            <YAxis yAxisId="right" orientation="right" tick={{ fill: "#34d399", fontSize: 9 }} axisLine={{ stroke: "#334155" }} domain={[0, (max: number) => Math.ceil(max * 1.25)]} />
+                            <YAxis yAxisId="left" tick={{ fill: "#94a3b8", fontSize: 9 }} axisLine={{ stroke: "#334155" }} domain={YAXIS_DOMAIN} />
+                            <YAxis yAxisId="right" orientation="right" tick={{ fill: "#34d399", fontSize: 9 }} axisLine={{ stroke: "#334155" }} domain={YAXIS_DOMAIN} />
                             <Tooltip
                               contentStyle={{ backgroundColor: "#020617", borderColor: "#334155", borderRadius: "6px", fontSize: "11px" }}
                               itemStyle={{ color: "#f8fafc" }}
                             />
                             <Legend wrapperStyle={{ fontSize: "10px" }} />
-                            <Bar yAxisId="left" dataKey="Sản lượng (Cái)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20}>
-                              <LabelList dataKey="Sản lượng (Cái)" position="top" offset={5} fill="#f43f5e" fontSize={10} fontWeight="semibold" />
+                            <Bar isAnimationActive={false} yAxisId="left" dataKey="Sản lượng (Cái)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20}>
+                              <LabelList dataKey="Sản lượng (Cái)" position="top" offset={5} fill="#f43f5e" fontSize={9} fontWeight="semibold" />
                             </Bar>
-                            <Bar yAxisId="left" dataKey="Quy đổi (SP)" fill="#22d3ee" radius={[4, 4, 0, 0]} barSize={20}>
-                              <LabelList dataKey="Quy đổi (SP)" position="top" offset={5} fill="#22d3ee" fontSize={10} fontWeight="semibold" />
+                            <Bar isAnimationActive={false} yAxisId="left" dataKey="Quy đổi (SP)" fill="#22d3ee" radius={[4, 4, 0, 0]} barSize={20}>
+                              <LabelList dataKey="Quy đổi (SP)" position="top" offset={5} fill="#22d3ee" fontSize={9} fontWeight="semibold" />
                             </Bar>
-                            <Line yAxisId="right" type="monotone" dataKey="NSLĐ Đạt (%)" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: "#34d399" }}>
+                            <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="NSLĐ Đạt (%)" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: "#34d399" }}>
                               <LabelList dataKey="NSLĐ Đạt (%)" position="top" offset={12} fill="#34d399" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
                             </Line>
                           </ComposedChart>
-                        </ResponsiveContainer>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
 
                       {/* MATRIX HOURLY TABLE */}
@@ -5252,7 +6538,7 @@ export default function App() {
                     <p className="text-[11px] text-slate-400 mt-1">So sánh Sản lượng lũy kế thực tế so với mục tiêu kế hoạch</p>
                   </div>
                   <div className="text-[11px] font-mono bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-400">
-                    Phân xưởng: <strong className="text-rose-500">{filterDivision === "ALL" ? "Tất cả" : filterDivision === "MLN" ? "DCRO" : "DCBG"}</strong>
+                    Phân xưởng: <strong className="text-rose-500">{filterDivision === "ALL" ? "Tất cả" : filterDivision === "MLN" ? "DCRO" : filterDivision === "RMA" ? "DCRMA (RMA)" : "DCBG"}</strong>
                   </div>
                 </div>
 
@@ -5446,7 +6732,7 @@ export default function App() {
                                     ? "bg-blue-950/50 text-blue-400 border border-blue-900/45" 
                                     : "bg-orange-950/50 text-orange-400 border border-orange-900/45"
                                 }`}>
-                                  {item.product.group === "MLN" ? "DCRO" : "DCBG"}
+                                  {item.product.group === "MLN" ? "DCRO" : item.product.group === "RMA" ? "DCRMA" : "DCBG"}
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-right font-mono text-slate-400">
@@ -5631,9 +6917,9 @@ export default function App() {
                           <tbody className="divide-y divide-slate-100 text-slate-600">
                             {parsedExcelProducts.map((p, index) => (
                               <tr key={index} className="hover:bg-slate-50/50">
-                                <td className="py-2 px-3 font-semibold text-slate-700">{p.group === "MLN" ? "DCRO" : "DCBG"}</td>
+                                <td className="py-2 px-3 font-semibold text-slate-700">{p.group === "MLN" ? "DCRO" : p.group === "RMA" ? "DCRMA" : "DCBG"}</td>
                                 <td className="py-2 px-3 font-mono font-bold text-slate-950">{p.code}</td>
-                                <td className="py-2 px-3 truncate max-w-[200px]" title={p.name}>{p.name}</td>
+                                <td className="py-2 px-3 truncate max-w-[180px]" title={p.name}>{p.name}</td>
                                 <td className="py-2 px-3 text-center font-bold text-rose-600 font-mono">{p.factor.toFixed(2)}</td>
                                 <td className="py-2 px-3 text-right font-mono font-semibold text-slate-900">
                                   {p.price ? p.price.toLocaleString("vi-VN") + " ₫" : "-"}
@@ -5679,7 +6965,7 @@ export default function App() {
                                       : "bg-sky-50 text-sky-700 border border-sky-200"
                                   }`}
                                 >
-                                  {prod.group === "MLN" ? "DCRO" : "DCBG"}
+                                  {prod.group === "MLN" ? "DCRO" : prod.group === "RMA" ? "DCRMA" : "DCBG"}
                                 </span>
                               </td>
                               <td className="py-3 px-4 font-mono font-bold text-slate-950">
@@ -5747,11 +7033,11 @@ export default function App() {
                         <label className="block font-medium text-slate-700 uppercase tracking-wider text-[10px]">
                           Phân nhóm sản phẩm
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <button
                             type="button"
                             onClick={() => setProdFormGroup("MLN")}
-                            className={`py-2 rounded-lg font-bold border transition ${
+                            className={`py-2 rounded-lg font-bold border transition text-[11px] ${
                               prodFormGroup === "MLN"
                                 ? "bg-white border-rose-600 text-rose-600 shadow-sm"
                                 : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"
@@ -5761,8 +7047,19 @@ export default function App() {
                           </button>
                           <button
                             type="button"
+                            onClick={() => setProdFormGroup("RMA")}
+                            className={`py-2 rounded-lg font-bold border transition text-[11px] ${
+                              prodFormGroup === "RMA"
+                                ? "bg-white border-rose-600 text-rose-600 shadow-sm"
+                                : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            ♻️ DCRMA (RMA/RW)
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setProdFormGroup("BG")}
-                            className={`py-2 rounded-lg font-bold border transition ${
+                            className={`py-2 rounded-lg font-bold border transition text-[11px] ${
                               prodFormGroup === "BG"
                                 ? "bg-white border-rose-600 text-rose-600 shadow-sm"
                                 : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"
@@ -6116,11 +7413,11 @@ export default function App() {
                     </div>
 
                     <div className="h-[400px]">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="99%" height="100%">
                         <ComposedChart data={simulatedHistoryMetrics} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                           <XAxis dataKey="month" fontSize={11} stroke="#64748b" />
-                          <YAxis tickFormatter={(v) => `${v}%`} domain={[0, (max: number) => Math.ceil(max * 1.25)]} fontSize={11} stroke="#64748b" />
+                          <YAxis tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} fontSize={11} stroke="#64748b" />
                           <Tooltip
                             contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                             content={({ active, payload }) => {
@@ -6149,7 +7446,7 @@ export default function App() {
                           />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           
-                          <Bar 
+                          <Bar isAnimationActive={false} 
                             dataKey="actualNSLD" 
                             name={`NSLĐ Thực Tế (${historyYear})`} 
                             fill="#f97316" 
@@ -6159,7 +7456,7 @@ export default function App() {
                             <LabelList dataKey="actualNSLD" position="top" offset={3} fill="#fb923c" fontSize={10} fontWeight="semibold" formatter={(v: any) => v !== null && v !== undefined ? `${Number(v).toFixed(1)}%` : ''} />
                           </Bar>
 
-                          <Bar 
+                          <Bar isAnimationActive={false} 
                             dataKey="nsld2025" 
                             name="NSLĐ Năm 2025" 
                             fill="#3b82f6" 
@@ -6172,7 +7469,7 @@ export default function App() {
                             <LabelList dataKey="nsld2025" position="top" offset={3} fill="#60a5fa" fontSize={10} fontWeight="semibold" formatter={(v: any) => v !== null && v !== undefined ? `${Number(v).toFixed(1)}%` : ''} />
                           </Bar>
 
-                          <Line 
+                          <Line isAnimationActive={false} 
                             type="monotone" 
                             dataKey="targetNSLD" 
                             name="Chỉ Tiêu Mục Tiêu" 
@@ -6220,11 +7517,11 @@ export default function App() {
                     </div>
 
                     <div className="h-[400px]">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="99%" height="100%">
                         <BarChart data={yearlyCumulativeCompareData} margin={{ top: 40, right: 30, left: -10, bottom: 5 }} barGap={12}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                           <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
-                          <YAxis tickFormatter={(v) => `${v}%`} domain={[0, (max: number) => Math.ceil(max * 1.25)]} fontSize={11} stroke="#64748b" />
+                          <YAxis tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} fontSize={11} stroke="#64748b" />
                           <Tooltip
                             contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                             content={({ active, payload }) => {
@@ -6258,7 +7555,7 @@ export default function App() {
                           />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           
-                          <Bar 
+                          <Bar isAnimationActive={false} 
                             dataKey="Năm 2025" 
                             name="Lũy Kế Năm 2025" 
                             fill="#3b82f6" 
@@ -6268,7 +7565,7 @@ export default function App() {
                             <LabelList dataKey="Năm 2025" position="top" offset={3} fill="#60a5fa" fontSize={11} fontWeight="semibold" formatter={(v: any) => v && v > 0 ? `${v}%` : ''} />
                           </Bar>
 
-                          <Bar 
+                          <Bar isAnimationActive={false} 
                             dataKey="Năm 2026" 
                             name="Lũy Kế Năm 2026" 
                             fill="#f97316" 
