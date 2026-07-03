@@ -2677,6 +2677,8 @@ export default function App() {
       let officialWorkers = formOfficialCountBG;
       let seasonalWorkers = formSeasonalCountBG;
       let hourlyWorkers = formHourlyWorkersBG;
+      let hourlyOfficialWorkers = formOfficialWorkersBG;
+      let hourlySeasonalWorkers = formSeasonalWorkersBG;
       let laborProductivityPercent = formAggregates.avgProductivityBG;
 
       if (isRMA) {
@@ -2686,6 +2688,8 @@ export default function App() {
         officialWorkers = formOfficialCountRMA;
         seasonalWorkers = formSeasonalCountRMA;
         hourlyWorkers = formHourlyWorkersRMA;
+        hourlyOfficialWorkers = formOfficialWorkersRMA;
+        hourlySeasonalWorkers = formSeasonalWorkersRMA;
         laborProductivityPercent = formAggregates.avgProductivityRMA;
       } else if (isMLN) {
         lineId = "line-mln-01";
@@ -2694,6 +2698,8 @@ export default function App() {
         officialWorkers = formOfficialCountRO;
         seasonalWorkers = formSeasonalCountRO;
         hourlyWorkers = formHourlyWorkersRO;
+        hourlyOfficialWorkers = formOfficialWorkersRO;
+        hourlySeasonalWorkers = formSeasonalWorkersRO;
         laborProductivityPercent = formAggregates.avgProductivityRO;
       }
 
@@ -2716,6 +2722,8 @@ export default function App() {
         technicianName: formTechnician,
         hourlyActuals: item.hourlyActuals,
         hourlyWorkers,
+        hourlyOfficialWorkers,
+        hourlySeasonalWorkers,
       };
     });
 
@@ -2807,17 +2815,37 @@ export default function App() {
     setFormSeasonalWorkersBG({});
 
     logsForDate.forEach(log => {
-      if (!log.hourlyWorkers) return;
       const isRMA = log.lineId === "line-rma-03";
       const isMLN = log.lineId === "line-mln-01";
       const isBG = log.lineId === "line-bg-02";
 
       if (isRMA) {
-        setFormOfficialWorkersRMA(prev => ({ ...prev, ...log.hourlyWorkers }));
+        if (log.hourlyOfficialWorkers) {
+          setFormOfficialWorkersRMA(prev => ({ ...prev, ...log.hourlyOfficialWorkers }));
+        } else if (log.hourlyWorkers) {
+          setFormOfficialWorkersRMA(prev => ({ ...prev, ...log.hourlyWorkers }));
+        }
+        if (log.hourlySeasonalWorkers) {
+          setFormSeasonalWorkersRMA(prev => ({ ...prev, ...log.hourlySeasonalWorkers }));
+        }
       } else if (isMLN) {
-        setFormOfficialWorkersRO(prev => ({ ...prev, ...log.hourlyWorkers }));
+        if (log.hourlyOfficialWorkers) {
+          setFormOfficialWorkersRO(prev => ({ ...prev, ...log.hourlyOfficialWorkers }));
+        } else if (log.hourlyWorkers) {
+          setFormOfficialWorkersRO(prev => ({ ...prev, ...log.hourlyWorkers }));
+        }
+        if (log.hourlySeasonalWorkers) {
+          setFormSeasonalWorkersRO(prev => ({ ...prev, ...log.hourlySeasonalWorkers }));
+        }
       } else if (isBG) {
-        setFormOfficialWorkersBG(prev => ({ ...prev, ...log.hourlyWorkers }));
+        if (log.hourlyOfficialWorkers) {
+          setFormOfficialWorkersBG(prev => ({ ...prev, ...log.hourlyOfficialWorkers }));
+        } else if (log.hourlyWorkers) {
+          setFormOfficialWorkersBG(prev => ({ ...prev, ...log.hourlyWorkers }));
+        }
+        if (log.hourlySeasonalWorkers) {
+          setFormSeasonalWorkersBG(prev => ({ ...prev, ...log.hourlySeasonalWorkers }));
+        }
       }
     });
 

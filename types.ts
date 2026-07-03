@@ -56,6 +56,8 @@ export interface ProductionLog {
   technicianName: string;
   hourlyActuals?: { [slotName: string]: number };
   hourlyWorkers?: { [slotName: string]: number };
+  hourlyOfficialWorkers?: { [slotName: string]: number };
+  hourlySeasonalWorkers?: { [slotName: string]: number };
 }
 
 // Chỉ số thống kê KHSX của tháng hiện tại (Tháng 6/2026)
