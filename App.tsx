@@ -1160,21 +1160,13 @@ export default function App() {
       });
 
       const workersRO = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0);
-      let prodPctRO = 0;
       if (workersRO > 0) {
-        prodPctRO = Number(((sumEqRO / (workersRO * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
-      }
-      if (prodPctRO > 0) {
         offRO += (formOfficialWorkersRO[slot] || 0);
         seasRO += (formSeasonalWorkersRO[slot] || 0);
       }
 
       const workersRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
-      let prodPctRMA = 0;
       if (workersRMA > 0) {
-        prodPctRMA = Number(((sumEqRMA / (workersRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
-      }
-      if (prodPctRMA > 0) {
         offRMA += (formOfficialWorkersRMA[slot] || 0);
         seasRMA += (formSeasonalWorkersRMA[slot] || 0);
       }
@@ -1188,11 +1180,7 @@ export default function App() {
         }
       });
       const workersBG = (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
-      let prodPctBG = 0;
       if (workersBG > 0) {
-        prodPctBG = Number(((sumEqBG / (workersBG * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
-      }
-      if (prodPctBG > 0) {
         offBG += (formOfficialWorkersBG[slot] || 0);
         seasBG += (formSeasonalWorkersBG[slot] || 0);
       }
