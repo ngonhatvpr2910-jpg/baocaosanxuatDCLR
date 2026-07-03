@@ -7433,15 +7433,15 @@ export default function App() {
             >
               <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                  <div className="space-y-1">
+                    <div className="space-y-1">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
                       <History className="w-5 h-5 text-orange-400" />
                       Mục tiêu sản xuất năm 2026 & Dữ liệu Lịch sử
                     </h3>
                     <p className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5">
-                      <span>Bổ sung dữ liệu sản xuất cho các tháng trước 07/2026.</span>
-                      <span className="inline-flex items-center gap-1 text-emerald-500 font-medium">
-                        <Unlock className="w-3 h-3" /> Toàn bộ dữ liệu đã được mở khóa để chỉnh sửa.
+                      <span>Dữ liệu kế hoạch & thực tế cho từng tháng.</span>
+                      <span className="inline-flex items-center gap-1 text-amber-500 font-medium">
+                        <Lock className="w-3 h-3" /> Các tháng đã qua và hiện tại được khóa để bảo vệ dữ liệu báo cáo.
                       </span>
                     </p>
                   </div>
@@ -7482,17 +7482,30 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                       {(historyYear === 2025 ? metrics2025 : processedMetrics2026).map((m, idx) => {
-                        const isPastPeriod = historyYear === 2025 || m.month <= 6;
-                        const isAutoReportMonth = false;
+                        const now = new Date();
+                        const currentYear = now.getFullYear();
+                        const currentMonth = now.getMonth() + 1;
+
+                        const isPast = historyYear < currentYear || (historyYear === currentYear && m.month < currentMonth);
+                        const isCurrent = historyYear === currentYear && m.month === currentMonth;
+                        const isLocked = isPast || isCurrent;
                         
-                        const isLpLocked = false;
-                        const isApLocked = false;
-                        const isEpLocked = false;
-                        const isPmLocked = false;
+                        // Auto report for past and current months
+                        const isAutoReportMonth = isLocked;
+                        
+                        const isLpLocked = isLocked;
+                        const isApLocked = isLocked;
+                        const isEpLocked = isLocked;
+                        const isPmLocked = isLocked;
 
                         return (
-                          <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
-                            <td className="py-2 px-2 text-sm font-medium text-slate-300">Tháng {m.month}</td>
+                          <tr key={idx} className={`hover:bg-slate-900/50 transition-colors ${isLocked ? "bg-slate-950/20" : ""}`}>
+                            <td className="py-2 px-2 text-sm font-medium text-slate-300">
+                              <div className="flex items-center gap-1.5">
+                                Tháng {m.month}
+                                {isLocked && <Lock className="w-2.5 h-2.5 text-slate-500" />}
+                              </div>
+                            </td>
                             
                             {/* NSLĐ */}
                             <td className="py-2 px-2">
@@ -7503,10 +7516,19 @@ export default function App() {
                                   onChange={(e) => updateHistoryMetric(historyYear, m.month, "laborProductivityPercent", e.target.value)}
                                   onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "laborProductivityPercent" })}
                                   onBlur={() => setFocusedField(null)}
-                                  className="w-full bg-slate-900/40 border border-slate-700/50 text-orange-400 rounded p-1.5 pr-8 text-sm outline-none focus:border-orange-500/50 focus:bg-slate-900/60 transition-all font-medium font-mono"
+                                  disabled={isLpLocked}
+                                  className={`w-full border rounded p-1.5 pr-8 text-sm outline-none transition-all font-medium font-mono ${
+                                    isLpLocked 
+                                      ? "bg-slate-950/60 border-slate-800/50 text-orange-500/70 cursor-not-allowed"
+                                      : "bg-slate-900/40 border-slate-700/50 text-orange-400 focus:border-orange-500/50 focus:bg-slate-900/60"
+                                  }`}
                                   placeholder="VD: 110"
                                 />
-                                <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">%</span>
+                                {isLpLocked ? (
+                                  <Lock className="w-3 h-3 text-slate-600 absolute right-2.5" />
+                                ) : (
+                                  <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">%</span>
+                                )}
                               </div>
                             </td>
 
