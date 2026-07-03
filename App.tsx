@@ -47,6 +47,8 @@ import {
   Calculator,
   FileSpreadsheet,
   Trash2,
+  Edit,
+  Pencil,
   X,
   Upload,
   Download,
@@ -248,7 +250,7 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [laborViewMode, setLaborViewMode] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
   const [filterDivision, setFilterDivision] = useState<ProductGroup | "ALL">("ALL");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "logging" | "monthly-plan" | "products" | "analytics" | "history-data">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "logging" | "monthly-plan" | "products" | "analytics" | "history-data" | "system-data">("dashboard");
   const [isRevenueVisible, setIsRevenueVisible] = useState(false);
   const [isPasswordInputVisible, setIsPasswordInputVisible] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -2715,6 +2717,73 @@ export default function App() {
     }, 3500);
   };
 
+  const handleEditLog = (date: string) => {
+    const logsForDate = productionLogs.filter(l => l.date === date);
+    if (logsForDate.length === 0) return;
+
+    const firstLog = logsForDate[0];
+    setFormDate(date);
+    setFormShift(firstLog.shift);
+    setFormTechnician(firstLog.technicianName);
+
+    // Thu thập tất cả các slots được sử dụng
+    const allSlots = new Set<string>();
+    logsForDate.forEach(log => {
+      if (log.hourlyActuals) {
+        Object.keys(log.hourlyActuals).forEach(slot => allSlots.add(slot));
+      }
+    });
+    
+    // Đảm bảo các slots mặc định cũng có mặt nếu shift là mặc định
+    const defaultSlots = getShiftSlots(firstLog.shift);
+    defaultSlots.forEach(s => allSlots.add(s));
+    
+    const sortedSlots = Array.from(allSlots).sort((a, b) => {
+      const hA = parseInt(a.split("H")[0]);
+      const hB = parseInt(b.split("H")[0]);
+      return hA - hB;
+    });
+    setFormSlots(sortedSlots);
+
+    // Tái cấu trúc formModelItems
+    const newFormModelItems: FormModelItem[] = logsForDate.map(log => ({
+      id: "item-" + log.productId + "-" + Date.now() + Math.random(),
+      productId: log.productId,
+      dailyPlan: 0,
+      hourlyActuals: log.hourlyActuals || {}
+    }));
+    setFormModelItems(newFormModelItems);
+
+    // Khôi phục nhân sự
+    setFormOfficialWorkersRO({});
+    setFormSeasonalWorkersRO({});
+    setFormOfficialWorkersRMA({});
+    setFormSeasonalWorkersRMA({});
+    setFormOfficialWorkersBG({});
+    setFormSeasonalWorkersBG({});
+
+    logsForDate.forEach(log => {
+      if (!log.hourlyWorkers) return;
+      const isRMA = log.lineId === "line-rma-03";
+      const isMLN = log.lineId === "line-mln-01";
+      const isBG = log.lineId === "line-bg-02";
+
+      if (isRMA) {
+        setFormOfficialWorkersRMA(prev => ({ ...prev, ...log.hourlyWorkers }));
+      } else if (isMLN) {
+        setFormOfficialWorkersRO(prev => ({ ...prev, ...log.hourlyWorkers }));
+      } else if (isBG) {
+        setFormOfficialWorkersBG(prev => ({ ...prev, ...log.hourlyWorkers }));
+      }
+    });
+
+    setActiveTab("logging");
+    setLoggingSubTab("records"); 
+    setFormMessage("🔄 Đã tải dữ liệu nhật ký ngày " + date + " lên form để chỉnh sửa. Sau khi sửa xong, nhấn 'Lưu Nhật Ký Ca' để cập nhật.");
+    
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleShiftChange = (newShift: "Ca HC (08:00 - 17:00)" | "Ca HC (08:00 - 19h)" | "Ca HC (08:00 - 20h00)") => {
     setFormShift(newShift);
     const slots = getShiftSlots(newShift);
@@ -3497,6 +3566,152 @@ export default function App() {
     XLSX.writeFile(wb, "Template_KHSX_Thang_Sunhouse.xlsx");
   };
 
+  const handleExportFullBackup = () => {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Production Logs
+    const wsLogs = XLSX.utils.json_to_sheet(productionLogs.map(log => ({
+      ...log,
+      hourlyActuals: JSON.stringify(log.hourlyActuals || {}),
+      hourlyWorkers: JSON.stringify(log.hourlyWorkers || {})
+    })));
+    XLSX.utils.book_append_sheet(wb, wsLogs, "Production_Logs");
+
+    // 2. Products
+    const wsProducts = XLSX.utils.json_to_sheet(products);
+    XLSX.utils.book_append_sheet(wb, wsProducts, "Products");
+
+    // 3. Monthly Plan (Flattened)
+    const flattenedPlan: any[] = [];
+    Object.keys(monthlyPlan).forEach(ym => {
+      Object.keys(monthlyPlan[ym]).forEach(prodId => {
+        const row: any = { yearMonth: ym, productId: prodId };
+        for (let d = 1; d <= 31; d++) {
+          row[`day_${d}`] = monthlyPlan[ym][prodId][d] ?? "";
+        }
+        flattenedPlan.push(row);
+      });
+    });
+    const wsPlan = XLSX.utils.json_to_sheet(flattenedPlan);
+    XLSX.utils.book_append_sheet(wb, wsPlan, "Monthly_Plan");
+
+    // 4. Gas Daily Reports
+    const wsGas = XLSX.utils.json_to_sheet(gasDailyReports);
+    XLSX.utils.book_append_sheet(wb, wsGas, "Gas_Daily_Reports");
+
+    // 5. Assembly Daily Reports
+    const wsAssembly = XLSX.utils.json_to_sheet(assemblyDailyReports);
+    XLSX.utils.book_append_sheet(wb, wsAssembly, "Assembly_Daily_Reports");
+
+    // 6. Metrics 2025 & 2026
+    const wsMetrics2025 = XLSX.utils.json_to_sheet(metrics2025);
+    XLSX.utils.book_append_sheet(wb, wsMetrics2025, "Metrics_2025");
+    const wsMetrics2026 = XLSX.utils.json_to_sheet(metrics2026);
+    XLSX.utils.book_append_sheet(wb, wsMetrics2026, "Metrics_2026");
+
+    // 7. Other Metrics
+    const wsMonthlyScrap = XLSX.utils.json_to_sheet(monthlyScrap);
+    XLSX.utils.book_append_sheet(wb, wsMonthlyScrap, "Monthly_Scrap");
+    const wsWeeklyScrap = XLSX.utils.json_to_sheet(weeklyScrap);
+    XLSX.utils.book_append_sheet(wb, wsWeeklyScrap, "Weekly_Scrap");
+    const wsWeeklyDclrError = XLSX.utils.json_to_sheet(weeklyDclrError);
+    XLSX.utils.book_append_sheet(wb, wsWeeklyDclrError, "Weekly_DCLR_Error");
+    const wsMonthlyDclrError = XLSX.utils.json_to_sheet(monthlyDclrError);
+    XLSX.utils.book_append_sheet(wb, wsMonthlyDclrError, "Monthly_DCLR_Error");
+
+    XLSX.writeFile(wb, `Sao_Luu_Toan_Bo_Bao_Cao_Sunhouse_${new Date().toISOString().split('T')[0]}.xlsx`);
+    setFormMessage("✅ Đã xuất toàn bộ dữ liệu báo cáo ra file Excel thành công!");
+    setTimeout(() => setFormMessage(""), 3500);
+  };
+
+  const handleImportFullBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        
+        // Helper to get sheet data
+        const getSheetData = (name: string) => {
+          const ws = wb.Sheets[name];
+          if (!ws) return null;
+          return XLSX.utils.sheet_to_json(ws);
+        };
+
+        // 1. Production Logs
+        const logsData = getSheetData("Production_Logs");
+        if (logsData) {
+          const importedLogs = (logsData as any[]).map(log => ({
+            ...log,
+            hourlyActuals: log.hourlyActuals ? JSON.parse(log.hourlyActuals) : {},
+            hourlyWorkers: log.hourlyWorkers ? JSON.parse(log.hourlyWorkers) : {}
+          }));
+          setProductionLogs(importedLogs);
+        }
+
+        // 2. Products
+        const productsData = getSheetData("Products");
+        if (productsData) setProducts(productsData as ProductDefinition[]);
+
+        // 3. Monthly Plan
+        const planData = getSheetData("Monthly_Plan");
+        if (planData) {
+          const newPlan: any = {};
+          (planData as any[]).forEach(row => {
+            const ym = row.yearMonth;
+            const pid = row.productId;
+            if (!newPlan[ym]) newPlan[ym] = {};
+            if (!newPlan[ym][pid]) newPlan[ym][pid] = {};
+            for (let d = 1; d <= 31; d++) {
+              const val = row[`day_${d}`];
+              if (val !== undefined && val !== "") {
+                newPlan[ym][pid][d] = Number(val);
+              }
+            }
+          });
+          setMonthlyPlan(newPlan);
+        }
+
+        // 4. Gas Reports
+        const gasData = getSheetData("Gas_Daily_Reports");
+        if (gasData) setGasDailyReports(gasData as DailyReportRowGas[]);
+
+        // 5. Assembly Reports
+        const assemblyData = getSheetData("Assembly_Daily_Reports");
+        if (assemblyData) setAssemblyDailyReports(assemblyData as DailyReportRowAssembly[]);
+
+        // 6. Metrics
+        const m2025Data = getSheetData("Metrics_2025");
+        if (m2025Data) setMetrics2025(m2025Data as MonthlyMetric[]);
+        const m2026Data = getSheetData("Metrics_2026");
+        if (m2026Data) setMetrics2026(m2026Data as MonthlyMetric[]);
+
+        // 7. Others
+        const mScrapData = getSheetData("Monthly_Scrap");
+        if (mScrapData) setMonthlyScrap(mScrapData as MonthlyScrapReport[]);
+        const wScrapData = getSheetData("Weekly_Scrap");
+        if (wScrapData) setWeeklyScrap(wScrapData as WeeklyScrapReport[]);
+        const wErrorData = getSheetData("Weekly_DCLR_Error");
+        if (wErrorData) setWeeklyDclrError(wErrorData as WeeklyDclreErrorRate[]);
+        const mErrorData = getSheetData("Monthly_DCLR_Error");
+        if (mErrorData) setMonthlyDclrError(mErrorData as MonthlyDclreErrorRate[]);
+
+        setFormMessage("✅ Đã khôi phục toàn bộ dữ liệu báo cáo từ file Excel thành công!");
+        setTimeout(() => setFormMessage(""), 4000);
+
+      } catch (err) {
+        console.error(err);
+        setFormMessage("❌ Lỗi khôi phục dữ liệu từ file Excel! Vui lòng kiểm tra định dạng file.");
+        setTimeout(() => setFormMessage(""), 4000);
+      }
+      e.target.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
   // --- TRANG PHÂN TÍCH AI (GEMINI BACKEND CALL) ---
   const handleTriggerAiAnalysis = async () => {
     setIsAiLoading(true);
@@ -3764,6 +3979,21 @@ export default function App() {
                 <History className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
                 <span>Mục tiêu sản xuất năm 2026</span>
               </button>
+
+              <button
+                id="tab-system-data"
+                onClick={() => setActiveTab("system-data")}
+                className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
+                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                } ${
+                  activeTab === "system-data"
+                    ? "bg-amber-600 text-white shadow-md shadow-amber-900/10 border border-amber-500/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                }`}
+              >
+                <RefreshCw className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
+                <span>Dữ liệu hệ thống</span>
+              </button>
             </div>
           </div>
         </div>
@@ -3784,7 +4014,7 @@ export default function App() {
               className="space-y-6"
             >
               {/* UNIFIED PREMIUM DASHBOARD TOOLBAR */}
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 {/* Left: Segmented Dashboard Sub-tabs */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -3909,7 +4139,7 @@ export default function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 
                 {/* CARD 1: HOẠCH ĐỊNH KHSX THÁNG */}
-                <div id="card-khsx" className="bg-slate-950 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
+                <div id="card-khsx" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-rose-600/5 rounded-full blur-xl group-hover:bg-rose-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-slate-400 font-mono uppercase tracking-wider">KHSX THÁNG {parseInt(formDate.split("-")[1])}</span>
@@ -3929,7 +4159,7 @@ export default function App() {
                 </div>
 
                 {/* CARD 2: THỰC HIỆN LŨY KẾ THÁNG */}
-                <div id="card-actual" className="bg-slate-950 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
+                <div id="card-actual" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-600/5 rounded-full blur-xl group-hover:bg-cyan-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-cyan-400 font-mono uppercase tracking-wider">LŨY KẾ THỰC HIỆN / TỔNG KẾ HOẠCH THÁNG {parseInt(formDate.split("-")[1])}</span>
@@ -3964,7 +4194,7 @@ export default function App() {
                 </div>
 
                 {/* CARD 3: BÁO CÁO DOANH THU */}
-                <div id="card-revenue" className="bg-slate-950 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
+                <div id="card-revenue" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-600/5 rounded-full blur-xl group-hover:bg-emerald-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider">DOANH THU (KH VS THỰC)</span>
@@ -4068,7 +4298,7 @@ export default function App() {
                 </div>
 
                 {/* CARD 4: HIỆU SUẤT TRUNG BÌNH */}
-                <div id="card-efficiency" className="bg-slate-950 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
+                <div id="card-efficiency" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-amber-600/5 rounded-full blur-xl group-hover:bg-amber-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-amber-400 font-mono uppercase tracking-wider">NSLĐ LŨY KẾ CẢ NĂM ({filterDivision === "ALL" ? "PHÂN XƯỞNG" : filterDivision})</span>
@@ -4091,7 +4321,7 @@ export default function App() {
                 </div>
 
                 {/* CARD 4.5: NSLĐ THÁNG */}
-                <div id="card-efficiency-month" className="bg-slate-950 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
+                <div id="card-efficiency-month" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-orange-600/5 rounded-full blur-xl group-hover:bg-orange-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-orange-400 font-mono uppercase tracking-wider">NSLĐ THÁNG {parseInt(formDate.split("-")[1])}</span>
@@ -4117,7 +4347,7 @@ export default function App() {
                 </div>
 
                 {/* CARD 5: TỔNG CÔNG THAO TÁC */}
-                <div id="card-labor" className="bg-slate-950 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
+                <div id="card-labor" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-600/5 rounded-full blur-xl group-hover:bg-indigo-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-indigo-400 font-mono uppercase tracking-wider">TỔNG CÔNG THAO TÁC (THÁNG)</span>
@@ -4141,7 +4371,7 @@ export default function App() {
               </div>
 
               {/* VISUAL CHART REPLACEMENT */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 h-[500px] flex flex-col">
+              <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-6 h-[500px] flex flex-col">
                 <div className="mb-6 shrink-0">
                   <h4 className="text-sm font-semibold text-white">Biểu đồ Tổng quan Thống kê Sản xuất</h4>
                   <p className="text-[11px] text-slate-400">Trực quan hóa sản lượng và năng suất theo tháng</p>
@@ -4172,7 +4402,7 @@ export default function App() {
               </div>
 
               {/* NEW CHART: OFFICIAL LABOR COMPARISON */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 h-[550px] flex flex-col">
+              <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-6 h-[550px] flex flex-col">
                 <div className="flex items-center justify-between mb-6 shrink-0">
                   <div>
                     <h4 className="text-sm font-semibold text-white">Biểu đồ So sánh NSLĐ</h4>
@@ -4210,7 +4440,7 @@ export default function App() {
 
 
               {/* ACTIVE RECENT LOGS SECTION */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-5 space-y-4">
+              <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -4236,16 +4466,28 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-slate-400">{log.date} — {log.shift}</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteLog(log.id);
-                            }}
-                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded opacity-0 group-hover:opacity-100 transition duration-150"
-                            title="Xóa nhật ký này"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition duration-150">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditLog(log.date);
+                              }}
+                              className="text-slate-500 hover:text-cyan-400 p-0.5 rounded"
+                              title="Chỉnh sửa nhật ký này"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteLog(log.id);
+                              }}
+                              className="text-slate-500 hover:text-rose-400 p-0.5 rounded"
+                              title="Xóa nhật ký này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <span className={`font-semibold px-2 py-0.2 rounded text-[10px] ${
                           log.productGroup === "MLN" ? "bg-cyan-940 text-cyan-400 border border-cyan-800" : "bg-orange-950 text-orange-400 border border-orange-850"
@@ -4284,7 +4526,7 @@ export default function App() {
             <div className="space-y-6" id="quality-scrap-section">
               {/* QUẢN LÝ BIỆN PHÁP CẢNH BÁO */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-950 p-4 rounded-xl border border-amber-900/40 flex items-start gap-3">
+                <div className="bg-slate-900/30 p-4 rounded-xl border border-amber-900/40 flex items-start gap-3">
                   <div className="bg-amber-950 p-2 rounded-lg border border-amber-805 text-amber-500 shrink-0">
                     <Flame className="w-5 h-5 text-amber-500" />
                   </div>
@@ -4297,7 +4539,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-slate-950 p-4 rounded-xl border border-cyan-900/30 flex items-start gap-3">
+                <div className="bg-slate-900/30 p-4 rounded-xl border border-cyan-900/30 flex items-start gap-3">
                   <div className="bg-cyan-950 p-2 rounded-lg border border-cyan-800 text-cyan-400 shrink-0">
                     <Award className="w-5 h-5 text-cyan-400" />
                   </div>
@@ -4314,7 +4556,7 @@ export default function App() {
               {/* BIỂU ĐỒ TRỰC QUAN HÓA CHO DỮ LIỆU ĐÍNH KÈM */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Recharts: Chi phí Hàng Hỏng (Scrap) - Tháng */}
-                <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
                   <div className="flex justify-between items-center mb-3">
                     <div>
                       <h4 className="text-sm font-semibold text-white">Theo Dõi Thiệt hại Giá Trị Hàng Hỏng Theo Tháng (Scrap Value)</h4>
@@ -4343,7 +4585,7 @@ export default function App() {
                 </div>
 
                 {/* Recharts: Chi phí Hàng Hỏng (Scrap) - Tuần */}
-                <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
                   <div className="flex justify-between items-center mb-3">
                     <div>
                       <h4 className="text-sm font-semibold text-white">Theo Dõi Hàng Hỏng Theo Tuần</h4>
@@ -4374,7 +4616,7 @@ export default function App() {
 
               {/* LỖI THAO TÁC BIỂU ĐỒ */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
                   <h4 className="text-sm font-semibold text-white mb-2">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tháng (%)</h4>
                   <div className="h-[320px]">
                     <ResponsiveContainer width="99%" height="100%">
@@ -4391,7 +4633,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
                   <h4 className="text-sm font-semibold text-white mb-2">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tuần (%)</h4>
                   <div className="h-[320px]">
                     <ResponsiveContainer width="99%" height="100%">
@@ -4410,7 +4652,7 @@ export default function App() {
               </div>
 
               {/* CHÍNH XÁC CÁC BẢNG TRÌNH BÀY SÁT BẢNG EXCEL TRONG ẢNH */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-5 space-y-6">
+              <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-5 space-y-6">
                 <div>
                   <h4 className="text-sm font-semibold text-white flex items-center gap-2">
                     <Database className="w-4 h-4 text-rose-500" />
@@ -4428,7 +4670,7 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <tbody>
-                        <tr key="scr-month-header" className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-850 font-mono">
+                        <tr key="scr-month-header" className="bg-slate-900/30 text-slate-400 font-semibold border-b border-slate-850 font-mono">
                           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
                             <td key={`tb2-m-${m}`} className="py-2.5 px-2 text-right border-l border-slate-850 font-semibold text-[10px]">T {m}</td>
                           ))}
@@ -4450,7 +4692,7 @@ export default function App() {
                           ))}
                         </tr>
 
-                        <tr key="scr-week-header-label" className="bg-slate-950 font-semibold">
+                        <tr key="scr-week-header-label" className="bg-slate-900/30 font-semibold">
                           <td colSpan={13} className="py-2 px-3 text-rose-400 border-t border-slate-800 font-sans">
                             Báo cáo hàng hỏng Tuần
                           </td>
@@ -4492,7 +4734,7 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <tbody>
-                        <tr key="err-week-header" className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-850 font-mono">
+                        <tr key="err-week-header" className="bg-slate-900/30 text-slate-400 font-semibold border-b border-slate-850 font-mono">
                           {displayWeeklyDclrError.map(w => (
                             <td key={`tb3-w-${w.week}`} className="py-2.5 px-2 text-center border-l border-slate-850 font-semibold">{w.week}</td>
                           ))}
@@ -4528,7 +4770,7 @@ export default function App() {
             </div>
           ) : dashboardSubTab === "charts" ? (
             <div className="space-y-6" id="charts-section">
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 space-y-4">
+              <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
@@ -4628,7 +4870,7 @@ export default function App() {
 
 
             {/* KHAI BÁO IMEI */}
-            <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden flex flex-col p-4 space-y-4">
+            <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 overflow-hidden flex flex-col p-4 space-y-4">
               <h3 className="text-white font-semibold flex items-center gap-2">
                 <FileText className="w-4 h-4 text-emerald-500" />
                 Khai Báo IMEI KHSX
@@ -4670,7 +4912,7 @@ export default function App() {
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Quét IMEI Khai Báo (KHSX)</label>
                     <div className="flex items-center gap-3">
-                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-700 flex items-center justify-center">
+                      <div className="bg-slate-900/30 p-3 rounded-xl border border-slate-700/60 flex items-center justify-center">
                         <Barcode className="w-6 h-6 text-emerald-500" />
                       </div>
                       <input
@@ -4707,7 +4949,7 @@ export default function App() {
 
             </div>
 
-            <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
+            <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 overflow-hidden flex flex-col">
               {/* SUB-TABS SELECTOR */}
               <div className="flex border-b border-slate-200 bg-slate-100 p-1 gap-1">
                 <button
@@ -4840,7 +5082,7 @@ export default function App() {
                             );
                           })
                         ) : (
-                          <tr>
+                          <tr key="empty-scanned-imeis">
                             <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
                               Chưa có dữ liệu IMEI nào được quét phù hợp với bộ lọc.
                             </td>
@@ -4956,7 +5198,7 @@ export default function App() {
                             );
                           })
                         ) : (
-                          <tr>
+                          <tr key="empty-declared-imeis">
                             <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
                               Không tìm thấy IMEI khai báo nào phù hợp với bộ lọc.
                             </td>
@@ -4973,25 +5215,25 @@ export default function App() {
                 <>
                   {/* METRICS PANEL */}
                   <div className="p-4 bg-slate-900/40 border-b border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                    <div className="bg-slate-900/30 p-3 rounded-lg border border-slate-800/60">
                       <div className="text-[10px] uppercase font-semibold text-slate-400">Tổng IMEI Khai Báo</div>
                       <div className="text-lg font-bold text-white mt-0.5 font-mono">
                         {comparisonRecords.filter(r => r.status === "matched" || r.status === "missing").length}
                       </div>
                     </div>
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                    <div className="bg-slate-900/30 p-3 rounded-lg border border-slate-800/60">
                       <div className="text-[10px] uppercase font-semibold text-slate-400">Thực Tế Đã Quét</div>
                       <div className="text-lg font-bold text-rose-400 mt-0.5 font-mono">
                         {scannedImeis.length}
                       </div>
                     </div>
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                    <div className="bg-slate-900/30 p-3 rounded-lg border border-slate-800/60">
                       <div className="text-[10px] uppercase font-semibold text-slate-400">Đã Trùng Khớp</div>
                       <div className="text-lg font-bold text-emerald-400 mt-0.5 font-mono">
                         {comparisonRecords.filter(r => r.status === "matched").length}
                       </div>
                     </div>
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                    <div className="bg-slate-900/30 p-3 rounded-lg border border-slate-800/60">
                       <div className="text-[10px] uppercase font-semibold text-slate-400">Tỷ Lệ Trùng Khớp</div>
                       <div className="text-lg font-bold text-sky-400 mt-0.5 font-mono">
                         {(() => {
@@ -5148,7 +5390,7 @@ export default function App() {
                             );
                           })
                         ) : (
-                          <tr>
+                          <tr key="empty-comparison-records">
                             <td colSpan={7} className="p-8 text-center text-slate-500 text-sm">
                               Không tìm thấy bản ghi đối chiếu nào phù hợp.
                             </td>
@@ -5174,7 +5416,7 @@ export default function App() {
             >
               
               {/* FORM ZONE */}
-              <div className="w-full bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
+              <div className="w-full bg-slate-900/30 p-3 rounded-xl border border-slate-800/60 space-y-3">
                 <div className="border-b border-slate-800 pb-2">
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <PlusCircle className="text-rose-500 w-5 h-5" />
@@ -5199,7 +5441,7 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-800/80">
                       <div className="space-y-1.5">
                         <label className="text-[11px] text-slate-400 font-mono uppercase">Ngày ghi nhận</label>
-                        <input type="date" value={formDate} onChange={handleDateChange} className="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white font-mono focus:border-rose-500 outline-none" required />
+                        <input type="date" value={formDate} onChange={handleDateChange} className="w-full bg-slate-950/40 border border-slate-700/60 rounded p-1.5 text-white font-mono focus:border-rose-500 outline-none" required />
                       </div>
                       
                       {/* Hidden fields as requested */}
@@ -5226,7 +5468,7 @@ export default function App() {
                             placeholder="8H - 9H"
                             value={newSlotInput}
                             onChange={(e) => setNewSlotInput(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white font-mono focus:border-rose-500 outline-none placeholder-slate-750 text-xs"
+                            className="w-full bg-slate-950/40 border border-slate-700/60 rounded p-1.5 text-white font-mono focus:border-rose-500 outline-none placeholder-slate-750 text-xs"
                           />
                           <button
                             type="button"
@@ -5261,7 +5503,7 @@ export default function App() {
                                handleScanSubmit(e.currentTarget.value.toUpperCase());
                              }
                           }}
-                          className="flex-1 bg-slate-950 border border-slate-700 rounded p-1.5 text-white font-mono focus:border-sky-500 outline-none placeholder-slate-600 text-xs"
+                          className="flex-1 bg-slate-950/40 border border-slate-700/60 rounded p-1.5 text-white font-mono focus:border-sky-500 outline-none placeholder-slate-600 text-xs"
                         />
                         <button
                           type="button"
@@ -5302,7 +5544,7 @@ export default function App() {
                             <th className="py-1 px-1 text-center text-slate-500 w-8">Xóa</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800 bg-slate-950 text-slate-200">
+                        <tbody className="divide-y divide-slate-800 bg-slate-950/30 text-slate-200">
                           {/* 1. Model Rows */}
                           {formModelItems
                             .filter((item) => {
@@ -5313,12 +5555,12 @@ export default function App() {
                             })
                             .map((item, idx) => {
                             const prodDef = products.find((p) => p.id === item.productId) || products[0];
-      if (!prodDef) return;
+      if (!prodDef) return null;
       
       const modelActual = Object.keys(item.hourlyActuals).reduce((sum, key) => sum + (item.hourlyActuals[key] || 0), 0);
                             return (
                               <tr key={item.id} className="hover:bg-slate-900/50 transition">
-                                <td className="py-1 px-1 sticky left-0 bg-slate-950 z-10 text-left border-r border-slate-800 min-w-[160px] w-[160px]">
+                                <td className="py-1 px-1 sticky left-0 bg-slate-950/50 z-10 text-left border-r border-slate-800 min-w-[160px] w-[160px]">
                                   <div className="flex gap-1 items-center w-full">
                                     <span className="text-slate-600 font-bold ml-1 shrink-0 select-none whitespace-nowrap">{idx + 1}.</span>
                                     <select
@@ -5904,7 +6146,7 @@ export default function App() {
 
 
               {/* LIVE DATABASE TABLE LOG DISPLAY LIST */}
-              <div className="w-full bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
+              <div className="w-full bg-slate-900/30 p-5 rounded-xl border border-slate-800/60 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                   <div>
                     <h3 className="text-base font-bold text-white flex items-center gap-1.5">
@@ -6073,13 +6315,22 @@ export default function App() {
                                     </span>
                                   </td>
                                   <td className="py-3 px-3 text-center">
-                                    <button
-                                      onClick={() => handleDeleteLog(log.id)}
-                                      className="p-1 text-slate-400 hover:text-rose-500 rounded hover:bg-rose-955 bg-transparent border border-transparent transition cursor-pointer"
-                                      title="Xóa dòng nhật ký"
-                                    >
-                                      <Trash2 className="w-4 h-4 inline-block" />
-                                    </button>
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        onClick={() => handleEditLog(log.date)}
+                                        className="p-1 text-slate-400 hover:text-cyan-500 rounded hover:bg-cyan-950 bg-transparent border border-transparent transition cursor-pointer"
+                                        title="Chỉnh sửa nhật ký này"
+                                      >
+                                        <Edit className="w-4 h-4 inline-block" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteLog(log.id)}
+                                        className="p-1 text-slate-400 hover:text-rose-500 rounded hover:bg-rose-955 bg-transparent border border-transparent transition cursor-pointer"
+                                        title="Xóa dòng nhật ký"
+                                      >
+                                        <Trash2 className="w-4 h-4 inline-block" />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))
@@ -6423,7 +6674,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4 shadow-xl">
+              <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60 space-y-4 shadow-xl">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-white flex items-center gap-1.5 uppercase font-mono">
@@ -6528,7 +6779,7 @@ export default function App() {
               </div>
 
               {/* BẢNG THEO DÕI THỰC HIỆN KẾ HOẠCH SẢN XUẤT */}
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4 shadow-xl">
+              <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60 space-y-4 shadow-xl">
                 <div className="border-b border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-white flex items-center gap-1.5 uppercase font-mono">
@@ -6710,7 +6961,7 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-850 bg-slate-950/20">
                       {monthlyPlanExecution.length === 0 ? (
-                        <tr>
+                        <tr key="empty-monthly-execution">
                           <td colSpan={8} className="py-12 text-center text-slate-500 italic font-sans bg-slate-950/40">
                             Không có dữ liệu kế hoạch hoặc sản xuất thực tế nào trong tháng này để theo dõi.
                           </td>
@@ -7180,7 +7431,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 space-y-4">
+              <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                   <div className="space-y-1">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -7189,8 +7440,8 @@ export default function App() {
                     </h3>
                     <p className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5">
                       <span>Bổ sung dữ liệu sản xuất cho các tháng trước 07/2026.</span>
-                      <span className="inline-flex items-center gap-1 text-amber-500 font-medium">
-                        <Lock className="w-3 h-3" /> Ô dữ liệu đã lưu sẽ được khóa bảo vệ tự động.
+                      <span className="inline-flex items-center gap-1 text-emerald-500 font-medium">
+                        <Unlock className="w-3 h-3" /> Toàn bộ dữ liệu đã được mở khóa để chỉnh sửa.
                       </span>
                     </p>
                   </div>
@@ -7232,12 +7483,12 @@ export default function App() {
                     <tbody className="divide-y divide-slate-800/50">
                       {(historyYear === 2025 ? metrics2025 : processedMetrics2026).map((m, idx) => {
                         const isPastPeriod = historyYear === 2025 || m.month <= 6;
-                        const isAutoReportMonth = historyYear === 2026 && (m.month === 6 || m.month === 7);
+                        const isAutoReportMonth = false;
                         
-                        const isLpLocked = isPastPeriod && m.laborProductivityPercent !== null && (focusedField?.month !== m.month || focusedField?.year !== historyYear || focusedField?.field !== "laborProductivityPercent");
-                        const isApLocked = isPastPeriod && m.actualProducts !== null && (focusedField?.month !== m.month || focusedField?.year !== historyYear || focusedField?.field !== "actualProducts");
-                        const isEpLocked = isPastPeriod && m.equivalentProducts !== null && (focusedField?.month !== m.month || focusedField?.year !== historyYear || focusedField?.field !== "equivalentProducts");
-                        const isPmLocked = isPastPeriod && m.productionMandays !== null && (focusedField?.month !== m.month || focusedField?.year !== historyYear || focusedField?.field !== "productionMandays");
+                        const isLpLocked = false;
+                        const isApLocked = false;
+                        const isEpLocked = false;
+                        const isPmLocked = false;
 
                         return (
                           <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
@@ -7247,13 +7498,15 @@ export default function App() {
                             <td className="py-2 px-2">
                               <div className="relative flex items-center">
                                 <input 
-                                  type="text" 
-                                  readOnly
-                                  value={m.laborProductivityPercent === null ? "" : `${m.laborProductivityPercent}%`} 
-                                  className="w-full bg-slate-950/60 border border-slate-800/80 text-orange-400 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
-                                  placeholder="Tự động..."
+                                  type="number" 
+                                  value={m.laborProductivityPercent === null ? "" : m.laborProductivityPercent} 
+                                  onChange={(e) => updateHistoryMetric(historyYear, m.month, "laborProductivityPercent", e.target.value)}
+                                  onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "laborProductivityPercent" })}
+                                  onBlur={() => setFocusedField(null)}
+                                  className="w-full bg-slate-900/40 border border-slate-700/50 text-orange-400 rounded p-1.5 pr-8 text-sm outline-none focus:border-orange-500/50 focus:bg-slate-900/60 transition-all font-medium font-mono"
+                                  placeholder="VD: 110"
                                 />
-                                <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">Tự động</span>
+                                <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">%</span>
                               </div>
                             </td>
 
@@ -7266,7 +7519,7 @@ export default function App() {
                                       type="text" 
                                       readOnly
                                       value={m.actualProducts === null ? "" : m.actualProducts.toLocaleString()} 
-                                      className="w-full bg-slate-950/60 border border-slate-800/80 text-emerald-400 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
+                                      className="w-full bg-slate-950/20 border border-slate-800/40 text-emerald-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
                                     <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">Báo cáo</span>
@@ -7280,10 +7533,10 @@ export default function App() {
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "actualProducts" })}
                                       onBlur={() => setFocusedField(null)}
                                       disabled={isApLocked}
-                                      className={`w-full bg-slate-900 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
+                                      className={`w-full bg-slate-900/40 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
                                         isApLocked
-                                          ? "bg-slate-950/80 text-slate-500 border-slate-900/40 cursor-not-allowed"
-                                          : "border-slate-700 text-white focus:border-orange-500"
+                                          ? "bg-slate-950/40 text-slate-500 border-slate-900/20 cursor-not-allowed"
+                                          : "border-slate-700/50 text-white focus:border-orange-500/50 focus:bg-slate-900/60"
                                       }`} 
                                       placeholder="VD: 1500"
                                     />
@@ -7304,7 +7557,7 @@ export default function App() {
                                       type="text" 
                                       readOnly
                                       value={m.equivalentProducts === null ? "" : m.equivalentProducts.toLocaleString()} 
-                                      className="w-full bg-slate-950/60 border border-slate-800/80 text-blue-400 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
+                                      className="w-full bg-slate-950/20 border border-slate-800/40 text-blue-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
                                     <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">Báo cáo</span>
@@ -7318,10 +7571,10 @@ export default function App() {
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "equivalentProducts" })}
                                       onBlur={() => setFocusedField(null)}
                                       disabled={isEpLocked}
-                                      className={`w-full bg-slate-900 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
+                                      className={`w-full bg-slate-900/40 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
                                         isEpLocked
-                                          ? "bg-slate-950/80 text-slate-500 border-slate-900/40 cursor-not-allowed"
-                                          : "border-slate-700 text-white focus:border-orange-500"
+                                          ? "bg-slate-950/40 text-slate-500 border-slate-900/20 cursor-not-allowed"
+                                          : "border-slate-700/50 text-white focus:border-orange-500/50 focus:bg-slate-900/60"
                                       }`} 
                                       placeholder="VD: 1550"
                                     />
@@ -7342,7 +7595,7 @@ export default function App() {
                                       type="text" 
                                       readOnly
                                       value={m.productionMandays === null ? "" : m.productionMandays.toLocaleString()} 
-                                      className="w-full bg-slate-950/60 border border-slate-800/80 text-purple-400 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
+                                      className="w-full bg-slate-950/20 border border-slate-800/40 text-purple-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
                                     <span className="absolute right-2 text-[9px] font-bold text-slate-500 tracking-wider bg-slate-900/80 px-1 py-0.5 rounded border border-slate-800 pointer-events-none select-none">Báo cáo</span>
@@ -7356,10 +7609,10 @@ export default function App() {
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "productionMandays" })}
                                       onBlur={() => setFocusedField(null)}
                                       disabled={isPmLocked}
-                                      className={`w-full bg-slate-900 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
+                                      className={`w-full bg-slate-900/40 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
                                         isPmLocked
-                                          ? "bg-slate-950/80 text-slate-500 border-slate-900/40 cursor-not-allowed"
-                                          : "border-slate-700 text-white focus:border-orange-500"
+                                          ? "bg-slate-950/40 text-slate-500 border-slate-900/20 cursor-not-allowed"
+                                          : "border-slate-700/50 text-white focus:border-orange-500/50 focus:bg-slate-900/60"
                                       }`} 
                                       placeholder="VD: 450"
                                     />
@@ -7714,7 +7967,7 @@ export default function App() {
             >
               
               {/* TOP CHAT INSTRUCTION */}
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="space-y-1.5">
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <Sparkles className="text-rose-500 animate-pulse w-5 h-5" />
@@ -7749,7 +8002,7 @@ export default function App() {
 
 
               {/* MAIN REPORT VIEW CONTAINER */}
-              <div className="bg-slate-950 rounded-xl border border-rose-900/30 overflow-hidden shadow-2xl relative">
+              <div className="bg-slate-900/30 rounded-xl border border-rose-900/30 overflow-hidden shadow-2xl relative">
                 
                 {/* Visual Accent bar */}
                 <div className="h-1 bg-gradient-to-r from-rose-600 via-amber-500 to-cyan-500"></div>
@@ -7870,6 +8123,97 @@ export default function App() {
                 </div>
               </div>
 
+            </motion.div>
+          )}
+
+          {activeTab === "system-data" && (
+            <motion.div
+              key="system-data"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md">
+                <div className="p-8 border-b border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                      <RefreshCw className="w-7 h-7 text-amber-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black text-white tracking-tight">Quản Lý Dữ Liệu Hệ Thống</h2>
+                      <p className="text-slate-400 text-sm mt-1">
+                        Sao lưu và khôi phục toàn bộ cơ sở dữ liệu báo cáo qua file Excel.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-8 space-y-8">
+                  {/* Export Section */}
+                  <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors group">
+                    <div className="flex items-start justify-between gap-6">
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                          <Download className="w-5 h-5 text-sky-400" />
+                          Xuất Toàn Bộ Dữ Liệu (Backup)
+                        </h3>
+                        <p className="text-sm text-slate-400 leading-relaxed max-w-xl">
+                          Hệ thống sẽ tổng hợp tất cả Nhật ký sản xuất, Danh mục sản phẩm, Kế hoạch tháng, 
+                          và các Chỉ số KPI vào một file Excel duy nhất có nhiều sheet. 
+                          Dùng để lưu trữ offline hoặc di chuyển dữ liệu.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleExportFullBackup}
+                        className="px-6 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-sky-900/20 flex items-center gap-2 shrink-0 group-hover:scale-105 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-5 h-5" />
+                        Xuất Excel
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Import Section */}
+                  <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors group">
+                    <div className="flex items-start justify-between gap-6">
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                          <Upload className="w-5 h-5 text-emerald-400" />
+                          Khôi Phục Dữ Liệu (Restore)
+                        </h3>
+                        <p className="text-sm text-slate-400 leading-relaxed max-w-xl">
+                          Tải lên file Excel backup đã xuất trước đó để khôi phục toàn bộ trạng thái hệ thống. 
+                          <span className="text-amber-400 font-semibold block mt-1">⚠️ Cảnh báo: Dữ liệu hiện tại trên trình duyệt sẽ bị ghi đè hoàn toàn.</span>
+                        </p>
+                      </div>
+                      <label className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2 shrink-0 cursor-pointer group-hover:scale-105">
+                        <RefreshCw className="w-5 h-5" />
+                        Chọn File Backup
+                        <input
+                          type="file"
+                          accept=".xlsx, .xls"
+                          className="hidden"
+                          onChange={handleImportFullBackup}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <Info className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="text-[11px] text-amber-200/70 leading-relaxed">
+                        <span className="font-bold text-amber-400 block mb-1 uppercase tracking-wider text-[10px]">Hướng dẫn quan trọng:</span>
+                        - File Excel backup chứa nhiều Sheet (Production_Logs, Products, Monthly_Plan, ...). Không nên thay đổi tên Sheet nếu muốn khôi phục chính xác.<br/>
+                        - Bạn có thể chỉnh sửa dữ liệu trực tiếp trong file Excel rồi khôi phục lại, nhưng hãy đảm bảo định dạng cột không thay đổi.<br/>
+                        - Dữ liệu được lưu trữ cục bộ trong trình duyệt (LocalStorage). Việc "Dọn dẹp trình duyệt" có thể làm mất dữ liệu, vì vậy hãy sao lưu thường xuyên.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
