@@ -239,23 +239,29 @@ export default function App() {
   // --- STATE ---
   const [isScrolled, setIsScrolled] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  const lastScrollY = useRef(0);
 
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       setIsScrolled(currentScrollY > 40);
       
-      if (currentScrollY > lastScrollY && currentScrollY > 120) {
-        setShowHeader(false);
+      // Only hide/show if scrolled enough to avoid jitter
+      const delta = currentScrollY - lastScrollY.current;
+      if (currentScrollY > 120) {
+        if (delta > 20) {
+          setShowHeader(false);
+        } else if (delta < -20) {
+          setShowHeader(true);
+        }
       } else {
         setShowHeader(true);
       }
-      setLastScrollY(currentScrollY);
+      lastScrollY.current = currentScrollY;
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY]);
+  }, []);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [laborViewMode, setLaborViewMode] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
@@ -1526,13 +1532,9 @@ export default function App() {
         const addedWorkdays = workdays + (isFormMonth && !hasSavedFormDate ? formWorkersCount : 0);
 
         if (addedEqQty > 0 || addedActualQty > 0 || addedWorkdays > 0) {
-          const baseEq = m.equivalentProducts || 0;
-          const baseActual = m.actualProducts || 0;
-          const baseMandays = m.productionMandays || 0;
-          
-          const finalEq = baseEq + addedEqQty;
-          const finalActual = baseActual + addedActualQty;
-          const finalMandays = baseMandays + addedWorkdays;
+          const finalEq = addedEqQty;
+          const finalActual = addedActualQty;
+          const finalMandays = addedWorkdays;
 
           const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(finalEq) && !Number.isNaN(finalMandays))
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
@@ -1677,6 +1679,12 @@ export default function App() {
   const displayMetrics = useMemo(() => {
     const baseMetrics = selectedYear === 2025 ? metrics2025 : processedMetrics2026;
 
+    if (selectedYear === 2026) {
+      // processedMetrics2026 already handles logs and filterDivision internally
+      return baseMetrics;
+    }
+
+    // For 2025, handle logs (this part might still be needed if 2025 doesn't have a processed version)
     const formDateParts = formDate.split("-");
     const formYear = parseInt(formDateParts[0]);
     const formMonth = parseInt(formDateParts[1]);
@@ -1738,13 +1746,9 @@ export default function App() {
         const addedWorkdays = workdays + (isFormMonth && !hasSavedFormDate ? formWorkersCount : 0);
 
         if (addedEqQty > 0 || addedActualQty > 0 || addedWorkdays > 0) {
-          const baseEq = m.equivalentProducts || 0;
-          const baseActual = m.actualProducts || 0;
-          const baseMandays = m.productionMandays || 0;
-          
-          const finalEq = baseEq + addedEqQty;
-          const finalActual = baseActual + addedActualQty;
-          const finalMandays = baseMandays + addedWorkdays;
+          const finalEq = addedEqQty;
+          const finalActual = addedActualQty;
+          const finalMandays = addedWorkdays;
 
           const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(finalEq) && !Number.isNaN(finalMandays))
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
@@ -2171,31 +2175,18 @@ export default function App() {
       .filter((m) => m.productionMandays !== null)
       .reduce((sum, m) => sum + (m.productionMandays || 0), 0);
 
-    // Hiệu suất trung bình cả năm (NSLĐ luỹ kế năm)
-    const activeMonths = metricsToUse.filter((m) => m.laborProductivityPercent !== null);
+    // Hiệu suất trung bình cả năm (NSLĐ luỹ kế năm) - Sử dụng logic giống biểu đồ so sánh
+    const filledMetrics = metricsToUse.filter(m => 
+      m.equivalentProducts !== null && 
+      m.productionMandays !== null && 
+      m.productionMandays > 0
+    );
     
     let avgLaborProductivity = 0;
-    if (filterDivision === "BG" && selectedYear === 2026) {
-      // Lấy 61.8 (T5) và 84.3 (T6) làm cơ sở cho BG
-      const t5 = 61.8;
-      const t6 = 84.3;
-      let totalProd = t5 + t6;
-      let count = 2;
-      
-      if (totalMandaysMonth > 0) {
-        const currentMonthProd = Number(((totalEqProd_productivity / totalMandaysMonth / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2));
-        totalProd += currentMonthProd;
-        count++;
-      }
-      
-      avgLaborProductivity = count > 0 ? Number((totalProd / count).toFixed(2)) : 0;
-    } else if (filterDivision === "RMA") {
-      // User requested current cumulative RMA to be 100%
-      avgLaborProductivity = 100;
-    } else {
-      avgLaborProductivity = totalMandays > 0
-        ? Number(((totalEqProducts / totalMandays / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2))
-        : 0;
+    if (filledMetrics.length > 0) {
+      const sumEq = filledMetrics.reduce((sum, m) => sum + (m.equivalentProducts || 0), 0);
+      const sumDays = filledMetrics.reduce((sum, m) => sum + (m.productionMandays || 0), 0);
+      avgLaborProductivity = Number(((sumEq / sumDays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(1));
     }
 
     // Revenue Calculation
@@ -3390,6 +3381,27 @@ export default function App() {
     XLSX.writeFile(wb, "Template_Nhap_San_Pham_Sunhouse.xlsx");
   };
 
+  const handleExportProducts = () => {
+    if (products.length === 0) {
+      alert("Không có sản phẩm nào để xuất.");
+      return;
+    }
+    const header = ["Phân nhóm", "Mã Model (Code)", "Tên sản phẩm", "Hệ số quy đổi", "Giá bán (VND)", "Ghi chú"];
+    const rows = products.map(p => [
+      p.group,
+      p.code,
+      p.name,
+      p.factor,
+      p.price,
+      p.description || ""
+    ]);
+    const wsData = [header, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Danh_sach_san_pham");
+    XLSX.writeFile(wb, "Danh_sach_san_pham_NMBD.xlsx");
+  };
+
   const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3408,14 +3420,15 @@ export default function App() {
           return;
         }
 
-        const headers = data[0].map((h: any) => String(h || "").trim().toLowerCase());
+        const headers = data[0].map((h: any) => String(h || "").trim());
 
-        let groupIdx = headers.findIndex((h: string) => h.includes("nhóm") || h.includes("group") || h.includes("loại"));
-        let codeIdx = headers.findIndex((h: string) => h.includes("code") || h.includes("mã") || h.includes("model"));
-        let nameIdx = headers.findIndex((h: string) => h.includes("tên") || h.includes("name") || h.includes("sản phẩm"));
-        let factorIdx = headers.findIndex((h: string) => h.includes("hệ số") || h.includes("factor") || h.includes("quy đổi"));
-        let priceIdx = headers.findIndex((h: string) => h.includes("giá") || h.includes("price"));
-        let descIdx = headers.findIndex((h: string) => h.includes("mô tả") || h.includes("desc") || h.includes("ghi chú"));
+        // Mapping index based on standard headers used in Export
+        let groupIdx = headers.findIndex((h: string) => h === "Phân nhóm" || h.toLowerCase().includes("nhóm") || h.toLowerCase().includes("group"));
+        let codeIdx = headers.findIndex((h: string) => h === "Mã Model (Code)" || h.toLowerCase().includes("mã") || h.toLowerCase().includes("model") || h.toLowerCase().includes("code"));
+        let nameIdx = headers.findIndex((h: string) => h === "Tên sản phẩm" || h.toLowerCase().includes("tên") || h.toLowerCase().includes("name") || h.toLowerCase().includes("sản phẩm"));
+        let factorIdx = headers.findIndex((h: string) => h === "Hệ số quy đổi" || h.toLowerCase().includes("hệ số") || h.toLowerCase().includes("factor") || h.toLowerCase().includes("quy đổi"));
+        let priceIdx = headers.findIndex((h: string) => h === "Giá bán (VND)" || h.toLowerCase().includes("giá") || h.toLowerCase().includes("price"));
+        let descIdx = headers.findIndex((h: string) => h === "Ghi chú" || h.toLowerCase().includes("mô tả") || h.toLowerCase().includes("desc") || h.toLowerCase().includes("ghi chú"));
 
         if (groupIdx === -1) groupIdx = 0;
         if (codeIdx === -1) codeIdx = 1;
@@ -3654,6 +3667,37 @@ export default function App() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "KHSX_Thang");
     XLSX.writeFile(wb, "Template_KHSX_Thang_Sunhouse.xlsx");
+  };
+
+  const handleExportMonthlyPlan = () => {
+    const days = Array.from({ length: 31 }, (_, i) => i + 1);
+    const [year, month] = formDate.split("-");
+    const header = ["Mã hàng", "Tên hàng", "Phân xưởng", ...days];
+    
+    // Get products that have a plan for the current month
+    const filteredProducts = products.filter(p => 
+      (monthlyPlan[currentYearMonth]?.[p.id]) !== undefined && 
+      (filterDivision === "ALL" || p.group === filterDivision)
+    );
+
+    if (filteredProducts.length === 0) {
+      alert("Không có dữ liệu kế hoạch tháng để xuất.");
+      return;
+    }
+
+    const rows = filteredProducts.map(p => {
+      const row = [p.code, p.name, p.group];
+      days.forEach(day => {
+        row.push(monthlyPlan[currentYearMonth]?.[p.id]?.[day] ?? 0);
+      });
+      return row;
+    });
+
+    const wsData = [header, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "KHSX_Thang");
+    XLSX.writeFile(wb, `KHSX_Thang_${month}_${year}_${filterDivision}.xlsx`);
   };
 
   const handleExportFullBackup = () => {
@@ -3949,9 +3993,9 @@ export default function App() {
       <div className={`sticky top-0 z-50 w-full bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-xl transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full"}`}>
         {/* HEADER BAR */}
         <header>
-          <div className={`relative w-full max-w-[1800px] mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4 transition-[padding,min-height] duration-300 ${isScrolled ? "py-1.5 min-h-[44px]" : "py-4 min-h-[72px]"}`}>
+          <div className={`relative w-full max-w-[1800px] mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4 transition-all duration-300 ${isScrolled ? "py-2 min-h-[56px]" : "py-3.5 min-h-[68px]"}`}>
             {/* Left: Date info & System Status (positioned absolute on md+ or simplified when scrolled, replacing brand identity) */}
-            <div className={`flex items-center gap-3 transition-transform duration-300 ${isScrolled ? "md:absolute md:left-4 scale-90" : "md:absolute md:left-4 scale-100"}`}>
+            <div className={`flex items-center gap-3 transition-transform duration-300 md:absolute md:left-4 ${isScrolled ? "scale-95" : "scale-100"}`}>
               <div className="bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-300 font-mono flex items-center gap-2 shadow-inner text-xs">
                 <Calendar className="w-4 h-4 text-rose-500" />
                 <span className="font-bold">{(() => {
@@ -3967,8 +4011,8 @@ export default function App() {
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="Hệ thống trực tuyến"></div>
             </div>
 
-            {/* Center: Title (Cân giữa, to, rõ, in đậm, giữ nguyên kích thước khi cuộn) */}
-            <div className="text-center flex flex-col items-center justify-center max-w-xl md:max-w-2xl lg:max-w-4xl px-2 transition-[transform,opacity] duration-300">
+            {/* Center: Title */}
+            <div className="text-center flex flex-col items-center justify-center max-w-xl md:max-w-2xl lg:max-w-4xl px-2 transition-all duration-300">
               <h1 className="text-lg md:text-2xl lg:text-3xl font-black tracking-wider text-white uppercase drop-shadow-md transition-transform duration-300">
                 BÁO CÁO SẢN XUẤT PHÂN XƯỞNG LẮP RÁP NMBD
               </h1>
@@ -3989,99 +4033,99 @@ export default function App() {
                 id="tab-dashboard"
                 onClick={() => setActiveTab("dashboard")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "dashboard"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Database className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <Database className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Bảng Điều Hành (Dashboard)</span>
               </button>
               <button
                 id="tab-logging"
                 onClick={() => setActiveTab("logging")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "logging"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <PlusCircle className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <PlusCircle className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Ghi Nhật Ký Ca</span>
               </button>
               <button
                 id="tab-imei-tracking"
                 onClick={() => setActiveTab("imei-tracking")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "imei-tracking"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Barcode className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <Barcode className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Theo Dõi IMEI</span>
               </button>
               <button
                 id="tab-products"
                 onClick={() => setActiveTab("products")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "products"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Sliders className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <Sliders className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Cấu Hình Sản Phẩm</span>
               </button>
               <button
                 id="tab-monthly-plan"
                 onClick={() => setActiveTab("monthly-plan")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "monthly-plan"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Calendar className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <Calendar className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">KHSX Tháng</span>
               </button>
               <button
                 id="tab-history"
                 onClick={() => setActiveTab("history-data")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "history-data"
                     ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <History className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <History className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Mục tiêu sản xuất năm 2026</span>
               </button>
 
               <button
-                id="tab-system-data"
+                id="tab-system"
                 onClick={() => setActiveTab("system-data")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "system-data"
                     ? "bg-amber-600 text-white shadow-lg shadow-amber-900/20 border border-amber-400 font-black"
                     : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <RefreshCw className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <RefreshCw className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Dữ liệu hệ thống</span>
               </button>
             </div>
@@ -4422,6 +4466,9 @@ export default function App() {
                       {kpis.avgLaborProductivity}%
                     </span>
                     <span className="text-xs text-slate-500 font-mono">/ mục tiêu {kpis.yearTarget}%</span>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-500 font-mono italic">
+                    Công thức: (Σ Sản phẩm Quy đổi / Σ Ngày công / 9.03) * 100 (Lũy kế)
                   </div>
                   <div className="mt-2 text-xs flex items-center justify-between text-slate-400">
                     <span>Trạng thái năm {selectedYear}</span>
@@ -6774,12 +6821,13 @@ export default function App() {
                       Thêm Kế Hoạch
                     </button>
                     <button
-                      onClick={handleDownloadMonthlyPlanTemplate}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white font-bold rounded transition text-xs border border-slate-800"
+                      onClick={handleExportMonthlyPlan}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-500 font-bold rounded transition text-xs shadow-sm cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      Tải File Mẫu
+                      Xuất Excel
                     </button>
+
                     <label className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950 text-emerald-400 hover:bg-emerald-900 hover:text-emerald-300 font-bold rounded cursor-pointer transition text-xs border border-emerald-900/50">
                       <FileSpreadsheet className="w-3.5 h-3.5" />
                       Import Excel
@@ -7167,17 +7215,17 @@ export default function App() {
                         Nhập sản phẩm hàng loạt từ File Excel
                       </h3>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Tải file mẫu Excel về máy, điền thông tin và tải lên để đồng bộ nhanh chóng danh mục sản phẩm vào hệ thống.
+                        Xuất danh sách sản phẩm hiện có ra Excel hoặc chọn file để cập nhật/nhập mới hàng loạt vào hệ thống.
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={handleDownloadTemplate}
+                        onClick={handleExportProducts}
                         className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                        title="Tải file mẫu Excel"
+                        title="Xuất danh sách sản phẩm ra Excel"
                       >
                         <Download className="w-3.5 h-3.5 text-slate-500" />
-                        Tải file Excel mẫu
+                        Cho phép xuất Excel
                       </button>
                       
                       <label className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
