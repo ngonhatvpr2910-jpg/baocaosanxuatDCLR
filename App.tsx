@@ -238,14 +238,24 @@ const DigitalClock = () => {
 export default function App() {
   // --- STATE ---
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 40);
+      const currentScrollY = window.scrollY;
+      setIsScrolled(currentScrollY > 40);
+      
+      if (currentScrollY > lastScrollY && currentScrollY > 120) {
+        setShowHeader(false);
+      } else {
+        setShowHeader(true);
+      }
+      setLastScrollY(currentScrollY);
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [lastScrollY]);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [laborViewMode, setLaborViewMode] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
@@ -3936,7 +3946,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-rose-500/10 selection:text-rose-900 light-theme">
       {/* STICKY HEADER & NAVIGATION CONTAINER */}
-      <div className="sticky top-0 z-50 w-full bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-xl will-change-transform">
+      <div className={`sticky top-0 z-50 w-full bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-xl transition-transform duration-300 ${showHeader ? "translate-y-0" : "-translate-y-full"}`}>
         {/* HEADER BAR */}
         <header>
           <div className={`relative w-full max-w-[1800px] mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4 transition-[padding,min-height] duration-300 ${isScrolled ? "py-1.5 min-h-[44px]" : "py-4 min-h-[72px]"}`}>
@@ -3979,100 +3989,100 @@ export default function App() {
                 id="tab-dashboard"
                 onClick={() => setActiveTab("dashboard")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "dashboard"
-                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Database className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>Bảng Điều Hành (Dashboard)</span>
+                <Database className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Bảng Điều Hành (Dashboard)</span>
               </button>
               <button
                 id="tab-logging"
                 onClick={() => setActiveTab("logging")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "logging"
-                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <PlusCircle className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>Ghi Nhật Ký Ca</span>
+                <PlusCircle className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Ghi Nhật Ký Ca</span>
               </button>
               <button
                 id="tab-imei-tracking"
                 onClick={() => setActiveTab("imei-tracking")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "imei-tracking"
-                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Barcode className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>Theo Dõi IMEI</span>
+                <Barcode className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Theo Dõi IMEI</span>
               </button>
               <button
                 id="tab-products"
                 onClick={() => setActiveTab("products")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "products"
-                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Sliders className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>Cấu Hình Sản Phẩm</span>
+                <Sliders className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Cấu Hình Sản Phẩm</span>
               </button>
               <button
                 id="tab-monthly-plan"
                 onClick={() => setActiveTab("monthly-plan")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "monthly-plan"
-                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <Calendar className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>KHSX Tháng</span>
+                <Calendar className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">KHSX Tháng</span>
               </button>
               <button
                 id="tab-history"
                 onClick={() => setActiveTab("history-data")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "history-data"
-                    ? "bg-rose-600 text-white shadow-md shadow-rose-900/10 border border-rose-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <History className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>Mục tiêu sản xuất năm 2026</span>
+                <History className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Mục tiêu sản xuất năm 2026</span>
               </button>
 
               <button
                 id="tab-system-data"
                 onClick={() => setActiveTab("system-data")}
                 className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
-                  isScrolled ? "px-2.5 py-1 text-[11px] gap-1.5" : "px-4 py-2 text-xs gap-2"
+                  isScrolled ? "px-3 py-1 text-[13px] gap-2" : "px-5 py-2.5 text-sm gap-2.5"
                 } ${
                   activeTab === "system-data"
-                    ? "bg-amber-600 text-white shadow-md shadow-amber-900/10 border border-amber-500/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent"
+                    ? "bg-amber-600 text-white shadow-lg shadow-amber-900/20 border border-amber-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
                 }`}
               >
-                <RefreshCw className={`transition-all duration-300 ${isScrolled ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                <span>Dữ liệu hệ thống</span>
+                <RefreshCw className={`transition-all duration-300 ${isScrolled ? "w-4 h-4" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Dữ liệu hệ thống</span>
               </button>
             </div>
           </div>
@@ -4133,7 +4143,7 @@ export default function App() {
                 <div className="flex flex-wrap items-center gap-3">
                   {/* Division Selection (DCRO / DCBG) */}
                   <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
-                    <span className="text-[10px] text-slate-500 font-mono uppercase pl-2 hidden sm:inline">Bộ phận:</span>
+                    <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Bộ phận:</span>
                     <button
                       id="filter-all"
                       onClick={() => setFilterDivision("ALL")}
@@ -4174,7 +4184,7 @@ export default function App() {
 
                   {/* Year Selection (2025 / 2026) */}
                   <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
-                    <span className="text-[10px] text-slate-500 font-mono uppercase pl-2 hidden sm:inline">Năm:</span>
+                    <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Năm:</span>
                     <button
                       id="year-2025"
                       onClick={() => setSelectedYear(2025)}
@@ -4222,7 +4232,7 @@ export default function App() {
                 <div id="card-khsx" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-rose-600/5 rounded-full blur-xl group-hover:bg-rose-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-slate-400 font-mono uppercase tracking-wider">KHSX THÁNG {parseInt(formDate.split("-")[1])}</span>
+                    <span className="text-sm text-slate-400 font-black uppercase tracking-wider">KHSX THÁNG {parseInt(formDate.split("-")[1])}</span>
                     <Layers className="w-4 h-4 text-slate-500" />
                   </div>
                   <div className="flex items-baseline gap-1">
@@ -4242,7 +4252,7 @@ export default function App() {
                 <div id="card-actual" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-600/5 rounded-full blur-xl group-hover:bg-cyan-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-cyan-400 font-mono uppercase tracking-wider">LŨY KẾ THỰC HIỆN / TỔNG KẾ HOẠCH THÁNG {parseInt(formDate.split("-")[1])}</span>
+                    <span className="text-sm text-cyan-400 font-black uppercase tracking-wider">LŨY KẾ THỰC HIỆN / TỔNG KẾ HOẠCH THÁNG {parseInt(formDate.split("-")[1])}</span>
                     <TrendingUp className="w-4 h-4 text-cyan-400 animate-pulse" />
                   </div>
                   <div className="flex items-baseline gap-1">
@@ -4278,7 +4288,7 @@ export default function App() {
                   <div id="card-combined-productivity" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-amber-600/5 rounded-full blur-xl group-hover:bg-amber-600/10 transition-all"></div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] text-amber-400 font-mono uppercase tracking-wider">NSLĐ GỘP (DCBG & DCRMA)</span>
+                      <span className="text-sm text-amber-400 font-black uppercase tracking-wider">NSLĐ GỘP (DCBG & DCRMA)</span>
                       <Users className="w-4 h-4 text-amber-500" />
                     </div>
                     <div className="text-2xl font-bold text-amber-400 tracking-tight">
@@ -4299,7 +4309,7 @@ export default function App() {
                   <div id="card-revenue" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-600/5 rounded-full blur-xl group-hover:bg-emerald-600/10 transition-all"></div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] text-emerald-400 font-mono uppercase tracking-wider">DOANH THU (KH VS THỰC)</span>
+                      <span className="text-sm text-emerald-400 font-black uppercase tracking-wider">DOANH THU (KH VS THỰC)</span>
                       {isRevenueVisible ? (
                         <button onClick={() => {
                           setIsRevenueVisible(false);
@@ -4404,7 +4414,7 @@ export default function App() {
                 <div id="card-efficiency" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-amber-600/5 rounded-full blur-xl group-hover:bg-amber-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-amber-400 font-mono uppercase tracking-wider">NSLĐ LŨY KẾ CẢ NĂM ({filterDivision === "ALL" ? "PHÂN XƯỞNG" : filterDivision})</span>
+                    <span className="text-sm text-amber-400 font-black uppercase tracking-wider">NSLĐ LŨY KẾ CẢ NĂM ({filterDivision === "ALL" ? "PHÂN XƯỞNG" : filterDivision})</span>
                     <Award className="w-4 h-4 text-amber-400" />
                   </div>
                   <div className="flex items-baseline gap-1.5">
@@ -4427,7 +4437,7 @@ export default function App() {
                 <div id="card-efficiency-month" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-orange-600/5 rounded-full blur-xl group-hover:bg-orange-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-orange-400 font-mono uppercase tracking-wider">NSLĐ THÁNG {parseInt(formDate.split("-")[1])}</span>
+                    <span className="text-sm text-orange-400 font-black uppercase tracking-wider">NSLĐ THÁNG {parseInt(formDate.split("-")[1])}</span>
                     <Activity className="w-4 h-4 text-orange-400" />
                   </div>
                   <div className="flex items-baseline gap-1.5">
@@ -4453,7 +4463,7 @@ export default function App() {
                 <div id="card-labor" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-600/5 rounded-full blur-xl group-hover:bg-indigo-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] text-indigo-400 font-mono uppercase tracking-wider">TỔNG CÔNG THAO TÁC (THÁNG)</span>
+                    <span className="text-sm text-indigo-400 font-black uppercase tracking-wider">TỔNG CÔNG THAO TÁC (THÁNG)</span>
                     <Users className="w-4 h-4 text-indigo-400" />
                   </div>
                   <div className="text-2xl font-bold text-indigo-400 tracking-tight">
@@ -4634,7 +4644,7 @@ export default function App() {
                     <Flame className="w-5 h-5 text-amber-500" />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider block">Tiêu Điểm Hàng Hỏng (Scrap)</span>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">Tiêu Điểm Hàng Hỏng (Scrap)</span>
                     <h4 className="text-sm font-bold text-white">Tổn thất Tháng 3 đạt đỉnh (28.39tr VND)</h4>
                     <p className="text-[11px] text-slate-400 leading-relaxed">
                       Do lỗi lắp họng bếp ga SHB5546 và nứt kính slim. Đã giao bộ phận Kỹ thuật IE khảo sát tiêu chuẩn ép kim loại.
@@ -4647,7 +4657,7 @@ export default function App() {
                     <Award className="w-5 h-5 text-cyan-400" />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-slate-500 uppercase font-mono tracking-wider block">Tỉ Lệ Lỗi Thao Tác</span>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">Tỉ Lệ Lỗi Thao Tác</span>
                     <h4 className="text-sm font-bold text-white">Mức lỗi thao tác T6 cực tốt (2.3%)</h4>
                     <p className="text-[11px] text-slate-400 leading-relaxed">
                       Lịch trình đào tạo tay nghề lắp ráp giúp hạn chế lỗi thao tác lắp ro vỏ và dây đốt bếp đơn giảm về mức an toàn.
@@ -4946,7 +4956,7 @@ export default function App() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Ngày KHSX</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày KHSX</label>
                   <input
                     type="date"
                     id="declareImeiDate"
@@ -4956,7 +4966,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mã Sản Phẩm {filteredDeclareProducts.length === 0 && <span className="text-rose-500 normal-case">(Chưa có KHSX ngày này)</span>}</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mã Sản Phẩm {filteredDeclareProducts.length === 0 && <span className="text-rose-500 normal-case">(Chưa có KHSX ngày này)</span>}</label>
                   <select
                     id="declareImeiProduct"
                     value={selectedDeclareProductId}
@@ -4978,7 +4988,7 @@ export default function App() {
                 {/* Quick Scan Input */}
                 <div className="bg-slate-900/40 p-5 rounded-lg border border-slate-800 space-y-4">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Quét IMEI Khai Báo (KHSX)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Quét IMEI Khai Báo (KHSX)</label>
                     <div className="flex items-center gap-3">
                       <div className="bg-slate-900/30 p-3 rounded-xl border border-slate-700/60 flex items-center justify-center">
                         <Barcode className="w-6 h-6 text-emerald-500" />
@@ -5087,12 +5097,12 @@ export default function App() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                       <thead>
                         <tr className="bg-slate-900 border-b border-slate-800">
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Thời Gian</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã Model</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Khung Giờ</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-right">Thao Tác</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Thời Gian</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Mã Model</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Khung Giờ</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Thao Tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -5194,12 +5204,12 @@ export default function App() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                       <thead>
                         <tr className="bg-slate-900 border-b border-slate-800">
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ngày Khai Báo</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã Model</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Trạng Thái</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-right">Thao Tác</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Ngày Khai Báo</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Mã Model</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Trạng Thái</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Thao Tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -5401,13 +5411,13 @@ export default function App() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                       <thead>
                         <tr className="bg-slate-900 border-b border-slate-800">
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mã Model</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Ngày Khai Báo (KHSX)</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Thời Gian Quét</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Khung Giờ Quét</th>
-                          <th className="p-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Kết Quả Đối Chiếu</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Mã IMEI</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Mã Model</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Tên Sản Phẩm</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Ngày Khai Báo (KHSX)</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Thời Gian Quét</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Khung Giờ Quét</th>
+                          <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Kết Quả Đối Chiếu</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -6288,7 +6298,7 @@ export default function App() {
 
                     {/* Local Division Selector for Logs */}
                     <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg p-0.5">
-                      <span className="text-[10px] text-slate-500 font-mono uppercase pl-2 pr-1 hidden sm:inline">Lọc tổ:</span>
+                      <span className="text-xs text-slate-400 font-black uppercase pl-2 pr-1 hidden sm:inline">Lọc tổ:</span>
                       {(["ALL", "MLN", "RMA", "BG"] as const).map(div => (
                           <button
                             key={div}
@@ -6618,7 +6628,7 @@ export default function App() {
                       <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-850 rounded-lg">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-mono text-[10px] sticky top-0 backdrop-blur">
+                            <tr className="bg-slate-900 border-b border-slate-700 text-slate-300 font-black text-xs uppercase tracking-wider sticky top-0 backdrop-blur shadow-sm">
                               <th className="py-3 px-3">Ngày sản xuất</th>
                               <th className="py-3 px-3">Phạm vi ca / Số model</th>
                               <th className="py-3 px-3">Dây chuyền hoạt động</th>
