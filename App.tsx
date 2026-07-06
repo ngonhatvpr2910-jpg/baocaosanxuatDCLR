@@ -415,7 +415,7 @@ export default function App() {
   const [products, setProducts] = useState<ProductDefinition[]>(() => {
     const defaultProducts = SUNHOUSE_PRODUCTS.map(p => ({
       ...p,
-      price: p.price ?? (p.group === "MLN" ? 4500000 : 1800000)
+      price: (p.price === null || Number.isNaN(Number(p.price))) ? (p.group === "MLN" ? 4500000 : 1800000) : Number(p.price)
     }));
 
     const saved = localStorage.getItem("sunhouse_products_v2");
@@ -425,8 +425,8 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((p: any) => ({
             ...p,
-            price: p.price ?? (p.group === "MLN" ? 4500000 : 1800000),
-            factor: p.factor ?? 1
+            price: (p.price === null || Number.isNaN(Number(p.price))) ? (p.group === "MLN" ? 4500000 : 1800000) : Number(p.price),
+            factor: (p.factor === null || Number.isNaN(Number(p.factor))) ? 1 : Number(p.factor)
           }));
         }
       } catch (e) {
@@ -1187,16 +1187,16 @@ export default function App() {
     });
 
     return {
-      formOfficialCountRO: Number((offRO / 8).toFixed(2)),
-      formSeasonalCountRO: Number((seasRO / 8).toFixed(2)),
-      formWorkersCountRO: Number(((offRO + seasRO) / 8).toFixed(2)),
-      formOfficialCountRMA: Number((offRMA / 8).toFixed(2)),
-      formSeasonalCountRMA: Number((seasRMA / 8).toFixed(2)),
-      formWorkersCountRMA: Number(((offRMA + seasRMA) / 8).toFixed(2)),
-      formOfficialCountBG: Number((offBG / 8).toFixed(2)),
-      formSeasonalCountBG: Number((seasBG / 8).toFixed(2)),
-      formWorkersCountBG: Number(((offBG + seasBG) / 8).toFixed(2)),
-      formWorkersCount: Number(((offRO + seasRO + offRMA + seasRMA + offBG + seasBG) / 8).toFixed(2)),
+      formOfficialCountRO: Number((offRO / 8).toFixed(2)) || 0,
+      formSeasonalCountRO: Number((seasRO / 8).toFixed(2)) || 0,
+      formWorkersCountRO: Number(((offRO + seasRO) / 8).toFixed(2)) || 0,
+      formOfficialCountRMA: Number((offRMA / 8).toFixed(2)) || 0,
+      formSeasonalCountRMA: Number((seasRMA / 8).toFixed(2)) || 0,
+      formWorkersCountRMA: Number(((offRMA + seasRMA) / 8).toFixed(2)) || 0,
+      formOfficialCountBG: Number((offBG / 8).toFixed(2)) || 0,
+      formSeasonalCountBG: Number((seasBG / 8).toFixed(2)) || 0,
+      formWorkersCountBG: Number(((offBG + seasBG) / 8).toFixed(2)) || 0,
+      formWorkersCount: Number(((offRO + seasRO + offRMA + seasRMA + offBG + seasBG) / 8).toFixed(2)) || 0,
     };
   }, [formSlots, formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, products]);
   const [formTechnician, setFormTechnician] = useState<string>("Nguyễn Minh Hoàng Khiêm ( DCLR )");
@@ -1341,7 +1341,7 @@ export default function App() {
         .reduce((sum, log) => sum + log.actualUnits, 0);
       accumulated += (plan - actual);
     }
-    return accumulated;
+    return accumulated || 0;
   };
 
 
@@ -1499,17 +1499,18 @@ export default function App() {
           ? logsForMonth
           : logsForMonth.filter((log) => log.date !== formDate);
 
-        const eqQty = filteredLogs.reduce((acc, curr) => acc + curr.equivalentProducts, 0);
-        const actualQty = filteredLogs.reduce((acc, curr) => acc + curr.actualUnits, 0);
+        const eqQty = filteredLogs.reduce((acc, curr) => acc + (curr.equivalentProducts || 0), 0);
+        const actualQty = filteredLogs.reduce((acc, curr) => acc + (curr.actualUnits || 0), 0);
         
         // Sum unique shift workers
         const uniqueShiftWorkersMap: { [key: string]: number } = {};
         filteredLogs.forEach((log) => {
           const key = `${log.date}_${log.shift}_${log.lineId}`;
-          uniqueShiftWorkersMap[key] = Math.max(uniqueShiftWorkersMap[key] || 0, log.workersCount);
+          uniqueShiftWorkersMap[key] = Math.max(uniqueShiftWorkersMap[key] || 0, log.workersCount || 0);
         });
-        const workdays = Object.values(uniqueShiftWorkersMap).reduce((acc, val) => acc + val, 0);
+        const workdays = Object.values(uniqueShiftWorkersMap).reduce((acc, val) => acc + (val || 0), 0);
 
+      if (filterDivision === "ALL") {
         const addedEqQty = eqQty + (isFormMonth && !hasSavedFormDate ? formAggregates.totalEqQty : 0);
         const addedActualQty = actualQty + (isFormMonth && !hasSavedFormDate ? formAggregates.totalActualQty : 0);
         const addedWorkdays = workdays + (isFormMonth && !hasSavedFormDate ? formWorkersCount : 0);
@@ -1523,7 +1524,7 @@ export default function App() {
           const finalActual = baseActual + addedActualQty;
           const finalMandays = baseMandays + addedWorkdays;
 
-          const calculatedProductivity = finalMandays > 0
+          const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(finalEq) && !Number.isNaN(finalMandays))
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
             : (m.laborProductivityPercent || 100);
 
@@ -1536,6 +1537,7 @@ export default function App() {
           };
         }
       } else {
+
         // Fallback to daily reports if available for this month (e.g. June 2026)
         const monthReports = combinedDailyReports.filter((r) => getMonthFromDateString(r.date) === m.month);
         if (monthReports.length > 0) {
@@ -1556,6 +1558,7 @@ export default function App() {
           };
         }
       }
+      }
       
       return m;
     });
@@ -1571,19 +1574,82 @@ export default function App() {
     }));
   }, [filterDivision]);
 
+  const getProductionMonthFromWeek = (weekStr: string): number => {
+    const weekNum = parseInt(weekStr.replace("W", ""), 10);
+    // Standard production calendar mapping
+    if (weekNum <= 4) return 1;
+    if (weekNum <= 8) return 2;
+    if (weekNum <= 13) return 3;
+    if (weekNum <= 17) return 4;
+    if (weekNum <= 21) return 5;
+    if (weekNum <= 26) return 6;
+    if (weekNum <= 30) return 7; // W27-W30 are July
+    if (weekNum <= 34) return 8;
+    if (weekNum <= 39) return 9;
+    if (weekNum <= 43) return 10;
+    if (weekNum <= 47) return 11;
+    return 12;
+  };
+
   const displayMonthlyScrap = useMemo(() => {
-    const ratio = filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.5 : filterDivision === "RMA" ? 0.1 : 0.4);
-    return monthlyScrap.map(r => ({
-      ...r,
-      scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * ratio)
-    }));
-  }, [filterDivision, monthlyScrap]);
+    const computedFromWeeks = Array(12).fill(null);
+    weeklyScrap.forEach(w => {
+      if (w.scrapCost !== null) {
+        const month = getProductionMonthFromWeek(w.week);
+        if (month >= 1 && month <= 12) {
+          if (computedFromWeeks[month - 1] === null) {
+            computedFromWeeks[month - 1] = 0;
+          }
+          computedFromWeeks[month - 1] += w.scrapCost;
+        }
+      }
+    });
+
+    return monthlyScrap.map((m, i) => {
+      let scrapCost = m.scrapCost;
+      if (computedFromWeeks[i] !== null) {
+        scrapCost = computedFromWeeks[i];
+      }
+      return {
+        ...m,
+        scrapCost: scrapCost === null ? null : Math.round(scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+      };
+    });
+  }, [filterDivision, monthlyScrap, weeklyScrap]);
+
+  const displayMonthlyDclrError = useMemo(() => {
+    const computedFromWeeksSum = Array(12).fill(0);
+    const computedFromWeeksCount = Array(12).fill(0);
+    
+    weeklyDclrError.forEach(w => {
+      if (w.errorRate !== null) {
+        const month = getProductionMonthFromWeek(w.week);
+        if (month >= 1 && month <= 12) {
+          computedFromWeeksSum[month - 1] += w.errorRate;
+          computedFromWeeksCount[month - 1] += 1;
+        }
+      }
+    });
+
+    return monthlyDclrError.map((m, i) => {
+      let errorRate = m.errorRate;
+      if (computedFromWeeksCount[i] > 0) {
+        errorRate = Number((computedFromWeeksSum[i] / computedFromWeeksCount[i]).toFixed(2));
+      }
+      
+      return {
+        ...m,
+        errorRate: errorRate === null ? null : Number((errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+      };
+    });
+  }, [filterDivision, monthlyDclrError, weeklyDclrError]);
+
+
 
   const displayWeeklyScrap = useMemo(() => {
-    const ratio = filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.5 : filterDivision === "RMA" ? 0.1 : 0.4);
     return weeklyScrap.map(r => ({
       ...r,
-      scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * ratio)
+      scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
     }));
   }, [filterDivision, weeklyScrap]);
 
@@ -1594,15 +1660,6 @@ export default function App() {
     }));
   }, [filterDivision, weeklyDclrError]);
 
-  const displayMonthlyDclrError = useMemo(() => {
-    return monthlyDclrError.map(r => ({
-      ...r,
-      errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
-    }));
-  }, [filterDivision, monthlyDclrError]);
-
-  // Bộ lọc dữ liệu theo bộ phận Phân xưởng (Máy Lọc Nước vs Bếp Gas)
-  // Trong thực tế, các chỉ số sản lượng sẽ chia theo nhóm sản phẩm. Nếu lọc, ta áp dụng hệ số tỉ lệ tương đối hoặc tính từ logs
   const chartMonthlyScrap = useMemo(() => displayMonthlyScrap.filter(r => r.scrapCost !== null), [displayMonthlyScrap]);
   const chartWeeklyScrap = useMemo(() => displayWeeklyScrap.filter(r => r.scrapCost !== null), [displayWeeklyScrap]);
   const chartWeeklyDclrError = useMemo(() => displayWeeklyDclrError.filter(e => e.errorRate !== null), [displayWeeklyDclrError]);
@@ -1616,140 +1673,103 @@ export default function App() {
 
     const hasSavedFormDate = productionLogs.some(log => log.date === formDate);
 
-    return baseMetrics.map((m) => {
-      // Historical data (months 1-6 of 2026, or all of 2025)
-      if (selectedYear === 2025 || m.month < 7) {
-        if (selectedYear === 2026) {
-          const getMonthFromDateString = (dStr: string): number => {
-            const parts = dStr.split("-");
-            if (parts.length < 2) return 0;
-            const mStr = parts[1].toLowerCase();
-            if (mStr.startsWith("jan")) return 1;
-            if (mStr.startsWith("feb")) return 2;
-            if (mStr.startsWith("mar")) return 3;
-            if (mStr.startsWith("apr")) return 4;
-            if (mStr.startsWith("may")) return 5;
-            if (mStr.startsWith("jun")) return 6;
-            if (mStr.startsWith("jul")) return 7;
-            if (mStr.startsWith("aug")) return 8;
-            if (mStr.startsWith("sep")) return 9;
-            if (mStr.startsWith("oct")) return 10;
-            if (mStr.startsWith("nov")) return 11;
-            if (mStr.startsWith("dec")) return 12;
-            return 0;
-          };
+    const getMonthFromDateString = (dStr) => {
+      const parts = dStr.split("-");
+      if (parts.length < 2) return 0;
+      const mStr = parts[1].toLowerCase();
+      if (mStr.startsWith("jan")) return 1;
+      if (mStr.startsWith("feb")) return 2;
+      if (mStr.startsWith("mar")) return 3;
+      if (mStr.startsWith("apr")) return 4;
+      if (mStr.startsWith("may")) return 5;
+      if (mStr.startsWith("jun")) return 6;
+      if (mStr.startsWith("jul")) return 7;
+      if (mStr.startsWith("aug")) return 8;
+      if (mStr.startsWith("sep")) return 9;
+      if (mStr.startsWith("oct")) return 10;
+      if (mStr.startsWith("nov")) return 11;
+      if (mStr.startsWith("dec")) return 12;
+      return 0;
+    };
 
-          const gasMonthDays = gasDailyReports.filter(r => !r.isSummary && !r.isOff && getMonthFromDateString(r.date) === m.month);
-          const assemMonthDays = assemblyDailyReports.filter(r => !r.isSummary && getMonthFromDateString(r.date) === m.month);
-
-          if (gasMonthDays.length > 0 || assemMonthDays.length > 0) {
-            if (filterDivision === "ALL") {
-              return m; // Already computed dynamically in processedMetrics2026
-            } else if (filterDivision === "BG") {
-              const eq = gasMonthDays.reduce((sum, r) => sum + Number(r.outputStove || 0), 0);
-              const actual = gasMonthDays.reduce((sum, r) => sum + Number(r.actualStove || 0), 0);
-              const mandays = gasMonthDays.reduce((sum, r) => sum + (Number(r.congGasStove || 0) + Number(r.congSeasonal || 0)), 0);
-              const lp = mandays > 0 ? Number(((eq / mandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : null;
-              return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
-            } else if (filterDivision === "MLN") {
-              const eq = assemMonthDays.reduce((sum, r) => sum + Number(r.outputLineChinh || 0), 0);
-              const actual = assemMonthDays.reduce((sum, r) => sum + Number(r.actualLineChinh || 0), 0);
-              const mandays = assemMonthDays.reduce((sum, r) => sum + (Number(r.congChinhThuc || 0) + Number(r.congThoiVu || 0)), 0);
-              const lp = mandays > 0 ? Number(((eq / mandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : null;
-              return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
-            } else if (filterDivision === "RMA") {
-              const eq = gasMonthDays.reduce((sum, r) => sum + Number(r.outputRma || 0), 0);
-              const actual = gasMonthDays.reduce((sum, r) => sum + Number(r.actualRma || 0), 0);
-              const mandays = gasMonthDays.reduce((sum, r) => sum + Number(r.congRma || 0), 0);
-              const lp = mandays > 0 ? Number(((eq / mandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : (m.month <= 6 ? 100 : null);
-              return { ...m, equivalentProducts: eq, actualProducts: actual, productionMandays: mandays, laborProductivityPercent: lp };
-            }
-          }
-        }
-
-        if (filterDivision === "ALL") return m;
-        const ratio = filterDivision === "MLN" ? 0.5 : filterDivision === "RMA" ? 0.05 : 0.45;
-        const mandayRatio = filterDivision === "MLN" ? 0.52 : filterDivision === "RMA" ? 0.04 : 0.44;
-        const nslRatio = filterDivision === "MLN" ? 1.02 : filterDivision === "RMA" ? 0.9 : 0.98;
-        
-        if (m.equivalentProducts === null) return m;
-        return {
-          ...m,
-          equivalentProducts: Math.round(m.equivalentProducts * ratio),
-          actualProducts: m.actualProducts ? Math.round(m.actualProducts * ratio) : null,
-          productionMandays: Math.round((m.productionMandays || 0) * mandayRatio),
-          laborProductivityPercent: m.laborProductivityPercent
-            ? Number((m.laborProductivityPercent * nslRatio).toFixed(2))
-            : null,
-        };
-      }
-
-      // New data (month 7+ of 2026)
-      const logsForMonth = productionLogs.filter(
-        (log) => log.date.startsWith(`${m.year}-${String(m.month).padStart(2, '0')}`)
-      );
+    return baseMetrics.map(m => {
+      let eqQty = m.equivalentProducts;
+      let actualQty = m.actualProducts;
       
-      const filteredLogs = hasSavedFormDate
-        ? logsForMonth
-        : logsForMonth.filter((log) => log.date !== formDate);
+      const filteredAssemblyLogs = filterDivision === "ALL" 
+        ? assemblyDailyReports 
+        : assemblyDailyReports.filter(row => row.group === filterDivision);
+        
+      const filteredGasLogs = filterDivision === "ALL" || filterDivision === "BG"
+        ? gasDailyReports
+        : [];
+        
+      const targetAssemblyLogs = filteredAssemblyLogs.filter(log => log.date.startsWith(`${m.year}-${m.month.toString().padStart(2, "0")}`));
+      const targetGasLogs = filteredGasLogs.filter(log => log.date.startsWith(`${m.year}-${m.month.toString().padStart(2, "0")}`));
 
-      const divisionLogs = filterDivision === "ALL" 
-        ? filteredLogs 
-        : filteredLogs.filter((log) => log.productGroup === filterDivision);
-
-      const eqQty = divisionLogs.reduce((acc, curr) => acc + curr.equivalentProducts, 0);
-      const actualQty = divisionLogs.reduce((acc, curr) => acc + curr.actualUnits, 0);
-
-      const uniqueShiftWorkersMap: { [key: string]: number } = {};
-      divisionLogs.forEach((log) => {
-        const key = `${log.date}_${log.shift}_${log.lineId}`;
-        uniqueShiftWorkersMap[key] = Math.max(uniqueShiftWorkersMap[key] || 0, log.workersCount);
+      const uniqueShiftWorkersMap: Record<string, number> = {};
+      targetAssemblyLogs.forEach(log => {
+        if (!uniqueShiftWorkersMap[log.date] || log.workersCount > uniqueShiftWorkersMap[log.date]) {
+          uniqueShiftWorkersMap[log.date] = log.workersCount;
+        }
       });
+      targetGasLogs.forEach(log => {
+        if (!uniqueShiftWorkersMap[log.date]) uniqueShiftWorkersMap[log.date] = 0;
+        uniqueShiftWorkersMap[log.date] += log.workersCount;
+      });
+
       const workdays = Object.values(uniqueShiftWorkersMap).reduce((acc, val) => acc + val, 0);
 
       const isFormMonth = m.year === formYear && m.month === formMonth;
-      
-      let finalEq = eqQty;
-      let finalActual = actualQty;
-      let finalMandays = workdays;
 
-      if (isFormMonth && !hasSavedFormDate) {
-        if (filterDivision === "ALL") {
-          finalEq += formAggregates.totalEqQty;
-          finalActual += formAggregates.totalActualQty;
-          finalMandays += formWorkersCount;
-        } else if (filterDivision === "MLN") {
-          finalEq += formAggregates.totalEqQtyRO;
-          finalActual += formAggregates.totalActualQtyRO;
-          finalMandays += formWorkersCountRO;
-        } else if (filterDivision === "RMA") {
-          finalEq += formAggregates.totalEqQtyRMA;
-          finalActual += formAggregates.totalActualQtyRMA;
-          finalMandays += formWorkersCountRMA;
-        } else if (filterDivision === "BG") {
-          finalEq += formAggregates.totalEqQtyBG;
-          finalActual += formAggregates.totalActualQtyBG;
-          finalMandays += formWorkersCountBG;
+      if (filterDivision === "ALL") {
+        const addedEqQty = eqQty + (isFormMonth && !hasSavedFormDate ? formAggregates.totalEqQty : 0);
+        const addedActualQty = actualQty + (isFormMonth && !hasSavedFormDate ? formAggregates.totalActualQty : 0);
+        const addedWorkdays = workdays + (isFormMonth && !hasSavedFormDate ? formWorkersCount : 0);
+
+        if (addedEqQty > 0 || addedActualQty > 0 || addedWorkdays > 0) {
+          const baseEq = m.equivalentProducts || 0;
+          const baseActual = m.actualProducts || 0;
+          const baseMandays = m.productionMandays || 0;
+          
+          const finalEq = baseEq + addedEqQty;
+          const finalActual = baseActual + addedActualQty;
+          const finalMandays = baseMandays + addedWorkdays;
+
+          const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(finalEq) && !Number.isNaN(finalMandays))
+            ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
+            : (m.laborProductivityPercent || 100);
+
+          return {
+            ...m,
+            equivalentProducts: finalEq,
+            actualProducts: finalActual,
+            productionMandays: finalMandays,
+            laborProductivityPercent: calculatedProductivity,
+          };
+        }
+      } else {
+        // Fallback to daily reports if available for this month
+        const monthReports = combinedDailyReports.filter((r) => getMonthFromDateString(r.date) === m.month);
+        if (monthReports.length > 0) {
+          const finalEq = monthReports.reduce((sum, r) => sum + (r.totalOutput || 0), 0);
+          const finalActual = monthReports.reduce((sum, r) => sum + (r.totalActualOutput || 0), 0);
+          const finalMandays = monthReports.reduce((sum, r) => sum + (r.totalCong || 0), 0);
+          const calculatedProductivity = finalMandays > 0
+            ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
+            : (m.laborProductivityPercent || 100);
+          return {
+            ...m,
+            equivalentProducts: finalEq,
+            actualProducts: finalActual,
+            productionMandays: finalMandays,
+            laborProductivityPercent: calculatedProductivity,
+          };
         }
       }
-
-      if (finalEq > 0 || finalActual > 0 || finalMandays > 0) {
-        const calculatedProductivity = finalMandays > 0
-          ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
-          : 0;
-
-        return {
-          ...m,
-          equivalentProducts: finalEq,
-          actualProducts: finalActual,
-          productionMandays: finalMandays,
-          laborProductivityPercent: calculatedProductivity,
-        };
-      }
-
-      return m; // returns base m if no data
+      return m;
     });
-  }, [selectedYear, filterDivision, metrics2025, processedMetrics2026, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, gasDailyReports, assemblyDailyReports]);
+  }, [selectedYear, filterDivision, metrics2025, processedMetrics2026, productionLogs, formDate, formAggregates, formWorkersCount, gasDailyReports, assemblyDailyReports, combinedDailyReports]);
 
   const nsldComparisonData = useMemo(() => {
     const getValues = (item: any, gasRow: any) => {
@@ -2158,7 +2178,7 @@ export default function App() {
         count++;
       }
       
-      avgLaborProductivity = Number((totalProd / count).toFixed(2));
+      avgLaborProductivity = count > 0 ? Number((totalProd / count).toFixed(2)) : 0;
     } else if (filterDivision === "RMA") {
       // User requested current cumulative RMA to be 100%
       avgLaborProductivity = 100;
@@ -2262,13 +2282,13 @@ export default function App() {
       totalEqProducts,
       totalMandays,
       avgLaborProductivity,
-      currentJulyEq: Math.round(totalEqProd_display),
-      currentJulyUnconverted: Math.round(totalActualUnitsMonth_display),
-      currentJulyMandays: Math.round(totalMandaysMonth),
-      currentJulyOfficial: Math.round(totalOfficialMonth),
-      currentJulySeasonal: Math.round(totalSeasonalMonth),
-      currentJulyProductivity: Number(((totalEqProd_productivity / (totalMandaysMonth || 1) / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2)),
-      currentJulyCompletionRate: totalMonthlyPlanUnits.total > 0 ? Number(((totalEqProd_display / totalMonthlyPlanUnits.total) * 100).toFixed(1)) : 0,
+      currentJulyEq: Math.round(totalEqProd_display) || 0,
+      currentJulyUnconverted: Math.round(totalActualUnitsMonth_display) || 0,
+      currentJulyMandays: Math.round(totalMandaysMonth) || 0,
+      currentJulyOfficial: Math.round(totalOfficialMonth) || 0,
+      currentJulySeasonal: Math.round(totalSeasonalMonth) || 0,
+      currentJulyProductivity: Number(((totalEqProd_productivity / (totalMandaysMonth || 1) / INDUSTRIAL_STANDARDS.standardQtyPerManday) * 100).toFixed(2)) || 0,
+      currentJulyCompletionRate: totalMonthlyPlanUnits.total > 0 ? Number(((totalEqProd_display / totalMonthlyPlanUnits.total) * 100).toFixed(1)) || 0 : 0,
       plannedRevenue,
       actualRevenue: finalActualRevenue,
       monthTarget,
@@ -2434,18 +2454,18 @@ export default function App() {
 
     const summaryList = Object.keys(groups).map((date) => {
       const logs = groups[date];
-      const totalActual = logs.reduce((sum, l) => sum + l.actualUnits, 0);
-      const totalEquivalent = logs.reduce((sum, l) => sum + l.equivalentProducts, 0);
+      const totalActual = logs.reduce((sum, l) => sum + (l.actualUnits || 0), 0);
+      const totalEquivalent = logs.reduce((sum, l) => sum + (l.equivalentProducts || 0), 0);
 
       // Nhóm theo shift & line để tính số công thực tế không bị nhân bản
       const shiftLineWorkers: { [key: string]: number } = {};
       logs.forEach((log) => {
         const key = `${log.shift}_${log.lineId}`;
-        shiftLineWorkers[key] = Math.max(shiftLineWorkers[key] || 0, log.workersCount);
+        shiftLineWorkers[key] = Math.max(shiftLineWorkers[key] || 0, log.workersCount || 0);
       });
-      const totalWorkers = Object.values(shiftLineWorkers).reduce((sum, w) => sum + w, 0);
+      const totalWorkers = Object.values(shiftLineWorkers).reduce((sum, w) => sum + (w || 0), 0);
 
-      const avgProductivity = totalWorkers > 0
+      const avgProductivity = (totalWorkers > 0 && !Number.isNaN(totalEquivalent) && !Number.isNaN(totalWorkers))
         ? Number(((totalEquivalent / totalWorkers) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
         : 0;
 
@@ -4471,13 +4491,13 @@ export default function App() {
                     />
                     <Legend />
                     <Bar isAnimationActive={false} yAxisId="left" dataKey="actualProducts" name="Sản lượng thực tế" fill="#94a3b8" radius={[2, 2, 0, 0]}>
-                      <LabelList dataKey="actualProducts" position="top" offset={3} fill="#94a3b8" fontSize={10} fontWeight="semibold" />
+                      <LabelList dataKey="actualProducts" position="top" offset={3} fill="#94a3b8" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? v : ''} />
                     </Bar>
                     <Bar isAnimationActive={false} yAxisId="left" dataKey="equivalentProducts" name="Sản lượng quy đổi" fill="#3b82f6" radius={[2, 2, 0, 0]}>
-                      <LabelList dataKey="equivalentProducts" position="top" offset={3} fill="#3b82f6" fontSize={10} fontWeight="semibold" />
+                      <LabelList dataKey="equivalentProducts" position="top" offset={3} fill="#3b82f6" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? v : ''} />
                     </Bar>
                     <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="laborProductivityPercent" name="Năng Suất (%)" stroke="#f97316" strokeWidth={2}>
-                      <LabelList dataKey="laborProductivityPercent" position="top" offset={10} fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                      <LabelList dataKey="laborProductivityPercent" position="top" offset={10} fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                     </Line>
                   </ComposedChart>
                   </ResponsiveContainer>
@@ -4587,12 +4607,12 @@ export default function App() {
                       <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
                         <div className="space-y-0.5">
                           <span className="text-slate-400 block text-[10px] uppercase font-mono">Lắp ráp thực tế</span>
-                          <span className="text-white font-bold block">{log.actualUnits} cái (Quy đổi: {log.equivalentProducts} SP)</span>
+                          <span className="text-white font-bold block">{(log.actualUnits || 0)} cái (Quy đổi: {(log.equivalentProducts || 0)} SP)</span>
                         </div>
                         <div className="space-y-0.5 text-right">
                           <span className="text-slate-400 block text-[10px] uppercase font-mono">NSLĐ Ca</span>
-                          <span className={`font-mono font-bold ${log.laborProductivityPercent >= kpis.monthTarget ? "text-emerald-400" : "text-amber-400"}`}>
-                            {log.laborProductivityPercent.toFixed(1)}%
+                          <span className={`font-mono font-bold ${Number(log.laborProductivityPercent) >= kpis.monthTarget ? "text-emerald-400" : "text-amber-400"}`}>
+                            {(Number(log.laborProductivityPercent) || 0).toFixed(1)}%
                           </span>
                         </div>
                       </div>
@@ -4666,7 +4686,7 @@ export default function App() {
                     </ResponsiveContainer>
                   </div>
                 </div>
-
+              
                 {/* Recharts: Chi phí Hàng Hỏng (Scrap) - Tuần */}
                 <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
                   <div className="flex justify-between items-center mb-3">
@@ -4696,7 +4716,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
               {/* LỖI THAO TÁC BIỂU ĐỒ */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
@@ -4709,7 +4728,7 @@ export default function App() {
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
                         <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
-                          <LabelList dataKey="errorRate" position="top" fill="#fbbf24" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                          <LabelList dataKey="errorRate" position="top" fill="#fbbf24" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                         </Line>
                       </LineChart>
                     </ResponsiveContainer>
@@ -4726,7 +4745,7 @@ export default function App() {
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
                         <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
-                          <LabelList dataKey="errorRate" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                          <LabelList dataKey="errorRate" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                         </Line>
                       </LineChart>
                     </ResponsiveContainer>
@@ -4739,9 +4758,8 @@ export default function App() {
                 <div>
                   <h4 className="text-sm font-semibold text-white flex items-center gap-2">
                     <Database className="w-4 h-4 text-rose-500" />
-                    Hồ Sơ Danh Mục Lỗi Sản Lượng (Trích xuất từ Excel gốc)
+                    Hồ Sơ Danh Mục Lỗi Sản Lượng
                   </h4>
-                  <p className="text-xs text-slate-400">Đồng bộ chính xác từ biểu mẫu Excel lưu trữ kỹ thuật của Phân xưởng DCLR</p>
                 </div>
 
                 {/* BIỂU MẪU EXCEL 1 */}
@@ -4753,50 +4771,19 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <tbody>
-                        <tr key="scr-month-header" className="bg-slate-900/30 text-slate-400 font-semibold border-b border-slate-850 font-mono">
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
-                            <td key={`tb2-m-${m}`} className="py-2.5 px-2 text-right border-l border-slate-850 font-semibold text-[10px]">T {m}</td>
-                          ))}
-                        </tr>
-                        <tr key="scr-month-values" className="border-b border-slate-850 text-slate-300 font-mono">
-                          {displayMonthlyScrap.map((m, idx) => (
-                            <td key={`tb2-mv-${m.month}`} className="py-1 px-1 border-l border-slate-850">
-                              <input 
-                                type="number" 
-                                value={m.scrapCost === null ? "" : m.scrapCost}
-                                onChange={(e) => updateScrapMetric("monthly", idx, e.target.value)}
-                                readOnly={m.scrapCost !== null}
-                                className={`w-full min-w-[70px] bg-transparent text-right outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                                  m.scrapCost !== null ? "cursor-not-allowed opacity-80" : "hover:bg-slate-800/50 focus:bg-slate-800 focus:text-rose-400"
-                                }`}
-                                placeholder="—"
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                        <tr key="scr-week-header-label" className="bg-slate-900/30 font-semibold">
-                          <td colSpan={13} className="py-2 px-3 text-rose-400 border-t border-slate-800 font-sans">
-                            Báo cáo hàng hỏng Tuần
-                          </td>
-                        </tr>
-                        <tr key="scr-week-header-codes" className="bg-slate-900/40 text-slate-400 border-b border-slate-850 font-mono text-[10px]">
-                          <td className="py-2 px-3 font-sans text-slate-450">Mã Tuần</td>
+                        <tr key="scr-week-header" className="bg-slate-900/30 text-slate-400 font-semibold border-b border-slate-850 font-mono">
                           {displayWeeklyScrap.map(w => (
-                            <td key={`tb2-w-${w.week}`} className="py-1.5 px-1.5 text-right border-l border-slate-850 font-semibold">{w.week}</td>
+                            <td key={`tb2-w-${w.week}`} className="py-2.5 px-2 text-center border-l border-slate-850 font-semibold">{w.week}</td>
                           ))}
                         </tr>
-                        <tr key="scr-week-values" className="text-slate-350 font-mono">
-                          <td className="py-2 px-3 bg-slate-950/20 text-slate-400 font-sans">Chi phí (VND)</td>
+                        <tr key="scr-week-values" className="border-b border-slate-850 text-slate-350 font-mono">
                           {displayWeeklyScrap.map((w, idx) => (
                             <td key={`tb2-wv-${w.week}`} className="py-1 px-1 border-l border-slate-850">
                               <input 
                                 type="number" 
-                                value={w.scrapCost === null ? "" : w.scrapCost}
+                                value={w.scrapCost === null || Number.isNaN(w.scrapCost) ? "" : w.scrapCost}
                                 onChange={(e) => updateScrapMetric("weekly", idx, e.target.value)}
-                                readOnly={w.scrapCost !== null}
-                                className={`w-full min-w-[60px] bg-transparent text-right outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                                  w.scrapCost !== null ? "cursor-not-allowed opacity-80" : "hover:bg-slate-800/50 focus:bg-slate-800 focus:text-amber-500"
-                                }`}
+                                className="w-full min-w-[70px] bg-transparent text-right outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-slate-800/50 focus:bg-slate-800 focus:text-rose-400"
                                 placeholder="—"
                               />
                             </td>
@@ -4831,12 +4818,11 @@ export default function App() {
                               <input 
                                 type="number" 
                                 step="0.1"
-                                value={w.errorRate === null ? "" : w.errorRate}
+                                value={w.errorRate === null || Number.isNaN(w.errorRate) ? "" : w.errorRate}
                                 onChange={(e) => updateDclrErrorMetric("weekly", idx, e.target.value)}
-                                readOnly={w.errorRate !== null}
-                                className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] ${
-                                  w.errorRate === null ? "text-slate-500 hover:bg-slate-800/50 focus:bg-slate-800" :
-                                  w.errorRate > 3 ? "text-rose-450 cursor-not-allowed" : "text-emerald-400 cursor-not-allowed"
+                                className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] hover:bg-slate-800/50 focus:bg-slate-800 ${
+                                  w.errorRate === null ? "text-slate-500" :
+                                  w.errorRate > 3 ? "text-rose-450" : "text-emerald-400"
                                 }`}
                                 placeholder="—"
                               />
@@ -4893,10 +4879,10 @@ export default function App() {
                         />
                         <Legend formatter={(value: any) => value === "productivity2025" ? "2025" : "2026"} />
                         <Bar isAnimationActive={false} dataKey="productivity2025" name="Năm 2025" fill="#3b82f6" radius={[2, 2, 0, 0]}>
-                          <LabelList dataKey="productivity2025" position="top" fill="#3b82f6" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                          <LabelList dataKey="productivity2025" position="top" fill="#3b82f6" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                         </Bar>
                         <Bar isAnimationActive={false} dataKey="productivity2026" name="Năm 2026" fill="#f97316" radius={[2, 2, 0, 0]}>
-                          <LabelList dataKey="productivity2026" position="top" fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                          <LabelList dataKey="productivity2026" position="top" fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                         </Bar>
                       </BarChart>
                     ) : chartTimeDimension === "yearly" ? (
@@ -4909,7 +4895,7 @@ export default function App() {
                           formatter={(value: any) => [`${value}%`, "Hiệu suất lao động"]}
                         />
                         <Bar isAnimationActive={false} dataKey="productivity" name="Hiệu suất lao động (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
-                          <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                          <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                         </Bar>
                       </BarChart>
                     ) : (
@@ -5663,7 +5649,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={item.dailyPlan !== undefined ? item.dailyPlan : ""}
+                                      value={item.dailyPlan !== undefined && !Number.isNaN(item.dailyPlan) ? item.dailyPlan : ""}
                                       onChange={(e) => handleUpdateItem(item.id, { dailyPlan: parseInt(e.target.value) || 0 })}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center focus:bg-slate-900 focus:outline-none font-bold text-amber-400 placeholder-slate-700 text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                       placeholder="0"
@@ -5674,7 +5660,7 @@ export default function App() {
                                       <input
                                         type="number"
                                         min={0}
-                                        value={item.hourlyActuals[slot] !== undefined ? item.hourlyActuals[slot] : ""}
+                                        value={item.hourlyActuals[slot] !== undefined && !Number.isNaN(item.hourlyActuals[slot]) ? item.hourlyActuals[slot] : ""}
                                         onChange={(e) => handleUpdateItemHourly(item.id, slot, parseInt(e.target.value) || 0)}
                                         className="w-full h-full min-h-[30px] bg-transparent text-center focus:bg-slate-900 focus:outline-none font-bold text-white placeholder-slate-700 text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         placeholder="-"
@@ -5943,7 +5929,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={formOfficialWorkersRO[slot] !== undefined ? formOfficialWorkersRO[slot] : ""}
+                                      value={formOfficialWorkersRO[slot] !== undefined && !Number.isNaN(formOfficialWorkersRO[slot]) ? formOfficialWorkersRO[slot] : ""}
                                       onChange={(e) => handleUpdateOfficialWorkerRO(slot, parseInt(e.target.value) || 0)}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center text-rose-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -5964,7 +5950,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={formSeasonalWorkersRO[slot] !== undefined ? formSeasonalWorkersRO[slot] : ""}
+                                      value={formSeasonalWorkersRO[slot] !== undefined && !Number.isNaN(formSeasonalWorkersRO[slot]) ? formSeasonalWorkersRO[slot] : ""}
                                       onChange={(e) => handleUpdateSeasonalWorkerRO(slot, parseInt(e.target.value) || 0)}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center text-amber-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -6015,7 +6001,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={formOfficialWorkersRMA[slot] !== undefined ? formOfficialWorkersRMA[slot] : ""}
+                                      value={formOfficialWorkersRMA[slot] !== undefined && !Number.isNaN(formOfficialWorkersRMA[slot]) ? formOfficialWorkersRMA[slot] : ""}
                                       onChange={(e) => handleUpdateOfficialWorkerRMA(slot, parseInt(e.target.value) || 0)}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center text-rose-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -6036,7 +6022,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={formSeasonalWorkersRMA[slot] !== undefined ? formSeasonalWorkersRMA[slot] : ""}
+                                      value={formSeasonalWorkersRMA[slot] !== undefined && !Number.isNaN(formSeasonalWorkersRMA[slot]) ? formSeasonalWorkersRMA[slot] : ""}
                                       onChange={(e) => handleUpdateSeasonalWorkerRMA(slot, parseInt(e.target.value) || 0)}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center text-amber-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -6090,7 +6076,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={formOfficialWorkersBG[slot] !== undefined ? formOfficialWorkersBG[slot] : ""}
+                                      value={formOfficialWorkersBG[slot] !== undefined && !Number.isNaN(formOfficialWorkersBG[slot]) ? formOfficialWorkersBG[slot] : ""}
                                       onChange={(e) => handleUpdateOfficialWorkerBG(slot, parseInt(e.target.value) || 0)}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center text-rose-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -6111,7 +6097,7 @@ export default function App() {
                                     <input
                                       type="number"
                                       min={0}
-                                      value={formSeasonalWorkersBG[slot] !== undefined ? formSeasonalWorkersBG[slot] : ""}
+                                      value={formSeasonalWorkersBG[slot] !== undefined && !Number.isNaN(formSeasonalWorkersBG[slot]) ? formSeasonalWorkersBG[slot] : ""}
                                       onChange={(e) => handleUpdateSeasonalWorkerBG(slot, parseInt(e.target.value) || 0)}
                                       className="w-full h-full min-h-[30px] bg-transparent text-center text-amber-300 font-bold focus:bg-slate-800 focus:outline-none text-[13px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
@@ -6384,17 +6370,17 @@ export default function App() {
                                       </div>
                                     )}
                                   </td>
-                                  <td className="py-3 px-3 text-right font-mono font-medium text-white">{log.actualUnits}</td>
-                                  <td className="py-3 px-3 text-right font-mono text-cyan-500 font-bold">x{log.equivalentFactor}</td>
-                                  <td className="py-3 px-3 text-right font-mono font-bold text-white">{log.equivalentProducts}</td>
-                                  <td className="py-3 px-3 text-right font-mono">{log.workersCount}</td>
+                                  <td className="py-3 px-3 text-right font-mono font-medium text-white">{log.actualUnits || 0}</td>
+                                  <td className="py-3 px-3 text-right font-mono text-cyan-500 font-bold">x{log.equivalentFactor || 0}</td>
+                                  <td className="py-3 px-3 text-right font-mono font-bold text-white">{log.equivalentProducts || 0}</td>
+                                  <td className="py-3 px-3 text-right font-mono">{log.workersCount || 0}</td>
                                   <td className="py-3 px-3 text-center">
                                     <span className={`inline-block font-mono font-bold px-1.5 py-0.2 rounded text-[10px] ${
-                                      log.laborProductivityPercent >= kpis.monthTarget
+                                      Number(log.laborProductivityPercent) >= kpis.monthTarget
                                         ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
                                         : "bg-amber-950 text-amber-400 border border-amber-800"
                                     }`}>
-                                      {log.laborProductivityPercent.toFixed(1)}%
+                                      {(Number(log.laborProductivityPercent) || 0).toFixed(1)}%
                                     </span>
                                   </td>
                                   <td className="py-3 px-3 text-center">
@@ -6491,13 +6477,13 @@ export default function App() {
                             />
                             <Legend wrapperStyle={{ fontSize: "10px" }} />
                             <Bar isAnimationActive={false} yAxisId="left" dataKey="Sản lượng (Cái)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20}>
-                              <LabelList dataKey="Sản lượng (Cái)" position="top" offset={5} fill="#f43f5e" fontSize={9} fontWeight="semibold" />
+                              <LabelList dataKey="Sản lượng (Cái)" position="top" offset={5} fill="#f43f5e" fontSize={9} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? v : ''} />
                             </Bar>
                             <Bar isAnimationActive={false} yAxisId="left" dataKey="Quy đổi (SP)" fill="#22d3ee" radius={[4, 4, 0, 0]} barSize={20}>
-                              <LabelList dataKey="Quy đổi (SP)" position="top" offset={5} fill="#22d3ee" fontSize={9} fontWeight="semibold" />
+                              <LabelList dataKey="Quy đổi (SP)" position="top" offset={5} fill="#22d3ee" fontSize={9} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? v : ''} />
                             </Bar>
                             <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="NSLĐ Đạt (%)" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: "#34d399" }}>
-                              <LabelList dataKey="NSLĐ Đạt (%)" position="top" offset={12} fill="#34d399" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${v}%`} />
+                              <LabelList dataKey="NSLĐ Đạt (%)" position="top" offset={12} fill="#34d399" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
                             </Line>
                           </ComposedChart>
                           </ResponsiveContainer>
@@ -6686,21 +6672,21 @@ export default function App() {
                                     </div>
                                   </td>
                                   <td className="py-3.5 px-3 text-right font-mono text-white text-[11.5px] font-bold">
-                                    {summary.totalActual} <span className="text-[10px] text-slate-500 font-normal">Cái</span>
+                                    {summary.totalActual || 0} <span className="text-[10px] text-slate-500 font-normal">Cái</span>
                                   </td>
                                   <td className="py-3.5 px-3 text-right font-mono text-cyan-400 font-extrabold text-[12px]">
-                                    {summary.totalEquivalent} <span className="font-normal text-[9px] text-slate-500">SP</span>
+                                    {summary.totalEquivalent || 0} <span className="font-normal text-[9px] text-slate-500">SP</span>
                                   </td>
                                   <td className="py-3.5 px-3 text-right font-mono text-indigo-400 text-[11.5px] font-bold">
-                                    {summary.totalWorkers} <span className="text-[10px] text-slate-500 font-normal font-sans">công</span>
+                                    {summary.totalWorkers || 0} <span className="text-[10px] text-slate-500 font-normal font-sans">công</span>
                                   </td>
                                   <td className="py-3.5 px-3 text-center">
                                     <span className={`inline-block font-mono font-extrabold px-2.5 py-0.5 rounded text-[11px] border ${
-                                      summary.avgProductivity >= kpis.monthTarget
+                                      Number(summary.avgProductivity) >= kpis.monthTarget
                                         ? "bg-emerald-950/80 text-emerald-400 border-emerald-900/50"
                                         : "bg-amber-950/80 text-amber-400 border-amber-900/50"
                                     }`}>
-                                      {summary.avgProductivity.toFixed(1)}%
+                                      {(Number(summary.avgProductivity) || 0).toFixed(1)}%
                                     </span>
                                   </td>
                                 </tr>
@@ -7442,7 +7428,7 @@ export default function App() {
                             step="0.01"
                             min="0.01"
                             max="10.00"
-                            value={prodFormFactor}
+                            value={Number.isNaN(prodFormFactor) ? "" : prodFormFactor}
                             onChange={(e) => setProdFormFactor(Number(e.target.value))}
                             className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-rose-600 font-mono text-sm font-bold text-rose-600"
                             required
@@ -7456,7 +7442,7 @@ export default function App() {
                             type="number"
                             step="1000"
                             min="0"
-                            value={prodFormPrice}
+                            value={Number.isNaN(prodFormPrice) ? "" : prodFormPrice}
                             onChange={(e) => setProdFormPrice(Number(e.target.value))}
                             className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-rose-600 font-mono text-sm font-bold"
                             required
@@ -7595,7 +7581,7 @@ export default function App() {
                               <div className="relative flex items-center">
                                 <input 
                                   type="number" 
-                                  value={m.laborProductivityPercent === null ? "" : m.laborProductivityPercent} 
+                                  value={m.laborProductivityPercent === null || Number.isNaN(m.laborProductivityPercent) ? "" : m.laborProductivityPercent} 
                                   onChange={(e) => updateHistoryMetric(historyYear, m.month, "laborProductivityPercent", e.target.value)}
                                   onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "laborProductivityPercent" })}
                                   onBlur={() => setFocusedField(null)}
@@ -7623,7 +7609,7 @@ export default function App() {
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.actualProducts === null ? "" : m.actualProducts.toLocaleString()} 
+                                      value={m.actualProducts === null || Number.isNaN(m.actualProducts) ? "" : m.actualProducts.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-emerald-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -7633,7 +7619,7 @@ export default function App() {
                                   <>
                                     <input 
                                       type="number" 
-                                      value={m.actualProducts === null ? "" : m.actualProducts} 
+                                      value={m.actualProducts === null || Number.isNaN(m.actualProducts) ? "" : m.actualProducts} 
                                       onChange={(e) => updateHistoryMetric(historyYear, m.month, "actualProducts", e.target.value)}
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "actualProducts" })}
                                       onBlur={() => setFocusedField(null)}
@@ -7661,7 +7647,7 @@ export default function App() {
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.equivalentProducts === null ? "" : m.equivalentProducts.toLocaleString()} 
+                                      value={m.equivalentProducts === null || Number.isNaN(m.equivalentProducts) ? "" : m.equivalentProducts.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-blue-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -7671,7 +7657,7 @@ export default function App() {
                                   <>
                                     <input 
                                       type="number" 
-                                      value={m.equivalentProducts === null ? "" : m.equivalentProducts} 
+                                      value={m.equivalentProducts === null || Number.isNaN(m.equivalentProducts) ? "" : m.equivalentProducts} 
                                       onChange={(e) => updateHistoryMetric(historyYear, m.month, "equivalentProducts", e.target.value)}
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "equivalentProducts" })}
                                       onBlur={() => setFocusedField(null)}
@@ -7699,7 +7685,7 @@ export default function App() {
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.productionMandays === null ? "" : m.productionMandays.toLocaleString()} 
+                                      value={m.productionMandays === null || Number.isNaN(m.productionMandays) ? "" : m.productionMandays.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-purple-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -7709,7 +7695,7 @@ export default function App() {
                                   <>
                                     <input 
                                       type="number" 
-                                      value={m.productionMandays === null ? "" : m.productionMandays} 
+                                      value={m.productionMandays === null || Number.isNaN(m.productionMandays) ? "" : m.productionMandays} 
                                       onChange={(e) => updateHistoryMetric(historyYear, m.month, "productionMandays", e.target.value)}
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "productionMandays" })}
                                       onBlur={() => setFocusedField(null)}
@@ -7989,7 +7975,7 @@ export default function App() {
                               type="number"
                               min="50"
                               max="200"
-                              value={monthlyTargets[`${historyYear}-${selectedTargetMonth}`] || 110}
+                              value={Number.isNaN(monthlyTargets[`${historyYear}-${selectedTargetMonth}`]) ? 110 : (monthlyTargets[`${historyYear}-${selectedTargetMonth}`] || 110)}
                               onChange={(e) => updateMonthlyTarget(historyYear, selectedTargetMonth, Number(e.target.value))}
                               className="bg-slate-900 border border-slate-700 text-white font-mono text-xs rounded p-1.5 w-full focus:border-rose-500 outline-none text-center"
                             />
@@ -8009,7 +7995,7 @@ export default function App() {
                           type="range" 
                           min="70" 
                           max="160" 
-                          value={monthlyTargets[`${historyYear}-${selectedTargetMonth}`] || 110} 
+                          value={Number.isNaN(monthlyTargets[`${historyYear}-${selectedTargetMonth}`]) ? 110 : (monthlyTargets[`${historyYear}-${selectedTargetMonth}`] || 110)} 
                           onChange={(e) => updateMonthlyTarget(historyYear, selectedTargetMonth, Number(e.target.value))}
                           className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500" 
                         />
