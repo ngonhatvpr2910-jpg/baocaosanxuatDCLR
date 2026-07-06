@@ -1535,6 +1535,26 @@ export default function App() {
             laborProductivityPercent: calculatedProductivity,
           };
         }
+      } else {
+        // Fallback to daily reports if available for this month (e.g. June 2026)
+        const monthReports = combinedDailyReports.filter((r) => getMonthFromDateString(r.date) === m.month);
+        if (monthReports.length > 0) {
+          const finalEq = monthReports.reduce((sum, r) => sum + (r.totalOutput || 0), 0);
+          const finalActual = monthReports.reduce((sum, r) => sum + (r.totalActualOutput || 0), 0);
+          const finalMandays = monthReports.reduce((sum, r) => sum + (r.totalCong || 0), 0);
+
+          const calculatedProductivity = finalMandays > 0
+            ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
+            : (m.laborProductivityPercent || 100);
+
+          return {
+            ...m,
+            equivalentProducts: finalEq,
+            actualProducts: finalActual,
+            productionMandays: finalMandays,
+            laborProductivityPercent: calculatedProductivity,
+          };
+        }
       }
       
       return m;
@@ -7551,8 +7571,7 @@ export default function App() {
 
                           const isPast = historyYear < currentYear || (historyYear === currentYear && m.month < currentMonth);
                           const isCurrent = historyYear === currentYear && m.month === currentMonth;
-                          // Unlock June 2026 as requested
-                          const isLocked = (isPast || isCurrent) && !(historyYear === 2026 && m.month === 6);
+                          const isLocked = isPast || isCurrent;
                           
                           // Auto report for past and current months
                           const isAutoReportMonth = isLocked;
