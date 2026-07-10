@@ -121,8 +121,8 @@ export function getYearWeeks(year: number): YearWeek[] {
       const dayOfWeek = date.getDay(); // 0: CN, 1: T2, ..., 5: T6, 6: T7
       const dateStr = `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-      // Friday starts a new week!
-      if (dayOfWeek === 5 && currentWeekDays.length > 0) {
+      // Monday starts a new week!
+      if (dayOfWeek === 1 && currentWeekDays.length > 0) {
         weeks.push({
           id: weekIndex,
           days: [...currentWeekDays],
@@ -266,7 +266,14 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [laborViewMode, setLaborViewMode] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
   const [filterDivision, setFilterDivision] = useState<ProductGroup | "ALL">("ALL");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "logging" | "monthly-plan" | "products" | "analytics" | "history-data" | "system-data">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "logging" | "monthly-plan" | "products" | "analytics" | "history-data" | "system-data" | "weekly-report">("dashboard");
+  const [selectedReportWeek, setSelectedReportWeek] = useState<number>(() => {
+    const now = new Date();
+    const weeks = getYearWeeks(now.getFullYear());
+    const dateStr = now.toISOString().split('T')[0];
+    const currentWeek = weeks.find(w => w.days.some(d => d.dateStr === dateStr));
+    return currentWeek ? currentWeek.id : 1;
+  });
   const [isRevenueVisible, setIsRevenueVisible] = useState(false);
   const [isPasswordInputVisible, setIsPasswordInputVisible] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -1675,6 +1682,106 @@ export default function App() {
   const chartMonthlyScrap = useMemo(() => displayMonthlyScrap.filter(r => r.scrapCost !== null), [displayMonthlyScrap]);
   const chartWeeklyScrap = useMemo(() => displayWeeklyScrap.filter(r => r.scrapCost !== null), [displayWeeklyScrap]);
   const chartWeeklyDclrError = useMemo(() => displayWeeklyDclrError.filter(e => e.errorRate !== null), [displayWeeklyDclrError]);
+
+  const weeklyReportData = useMemo(() => {
+    const weeks = getYearWeeks(selectedYear);
+    const weekObj = weeks.find(w => w.id === selectedReportWeek);
+    if (!weekObj) return { rows: [], dayTotals: [], grandTotal: {} };
+
+    const filteredProducts = products.filter(p => filterDivision === "ALL" || p.group === filterDivision);
+    
+    const rows = filteredProducts.map(product => {
+      const dayData = weekObj.days.map(day => {
+        const yearMonth = `${day.dateStr.split('-')[0]}-${day.dateStr.split('-')[1]}`;
+        const plan = monthlyPlan[yearMonth]?.[product.id]?.[day.dayNum] || 0;
+        
+        const logs = productionLogs.filter(log => log.date === day.dateStr && log.productId === product.id);
+        const actual = logs.reduce((sum, log) => sum + log.actualUnits, 0);
+        
+        return { plan, actual };
+      });
+
+      const totalPlan = dayData.reduce((sum, d) => sum + d.plan, 0);
+      const totalActual = dayData.reduce((sum, d) => sum + d.actual, 0);
+      const diff = totalActual - totalPlan;
+
+      return {
+        product,
+        dayData,
+        totalPlan,
+        totalActual,
+        diff
+      };
+    }).filter(row => row.totalPlan > 0 || row.totalActual > 0);
+
+    const dayTotals = weekObj.days.map((_, i) => {
+      const plan = rows.reduce((sum, r) => sum + r.dayData[i].plan, 0);
+      const actual = rows.reduce((sum, r) => sum + r.dayData[i].actual, 0);
+      const planEq = rows.reduce((sum, r) => sum + r.dayData[i].plan * (r.product.factor || 1), 0);
+      const actualEq = rows.reduce((sum, r) => sum + r.dayData[i].actual * (r.product.factor || 1), 0);
+      
+      const dayLogs = productionLogs.filter(log => log.date === weekObj.days[i].dateStr);
+      
+      // Calculate total workers for the day by summing workers from unique lines
+      const uniqueLines = Array.from(new Set(dayLogs.map(l => l.lineId)));
+      const workers = uniqueLines.reduce((sum, lineId) => {
+        const lineLogs = dayLogs.filter(l => l.lineId === lineId);
+        return sum + (lineLogs.length > 0 ? lineLogs[0].workersCount : 0);
+      }, 0);
+
+      return { plan, actual, planEq, actualEq, workers };
+    });
+
+    const grandTotal = {
+      plan: dayTotals.reduce((sum: number, d) => sum + d.plan, 0),
+      actual: dayTotals.reduce((sum: number, d) => sum + d.actual, 0),
+      planEq: dayTotals.reduce((sum: number, d) => sum + d.planEq, 0),
+      actualEq: dayTotals.reduce((sum: number, d) => sum + d.actualEq, 0),
+      workers: dayTotals.reduce((sum: number, d) => sum + (d.workers as number), 0) / (dayTotals.filter(d => (d.workers as number) > 0).length || 1)
+    };
+
+    // Calculate cumulative values up to the last day with production
+    const lastDayWithDataIndex = [...dayTotals].reverse().findIndex(d => d.actualEq > 0);
+    const lastIndex = lastDayWithDataIndex === -1 ? -1 : dayTotals.length - 1 - lastDayWithDataIndex;
+    
+    const cumulativePlanEq = lastIndex >= 0 ? dayTotals.slice(0, lastIndex + 1).reduce((sum, d) => sum + d.planEq, 0) : 0;
+    const cumulativeActualEq = lastIndex >= 0 ? dayTotals.slice(0, lastIndex + 1).reduce((sum, d) => sum + d.actualEq, 0) : 0;
+
+    return { weekObj, rows, dayTotals, grandTotal, cumulativePlanEq, cumulativeActualEq };
+  }, [selectedYear, selectedReportWeek, products, monthlyPlan, productionLogs, filterDivision]);
+
+  const handleExportWeeklyExcel = () => {
+    const { weekObj, rows } = weeklyReportData;
+    if (!weekObj) return;
+
+    const workbook = XLSX.utils.book_new();
+    const excelData = rows.map((r, idx) => {
+      const row: any = {
+        "STT": idx + 1,
+        "Mã SP": r.product.code,
+        "Tên sản phẩm": r.product.name,
+        "ĐVT": r.product.unit || "Cái",
+        "Hệ số quy đổi": r.product.factor,
+      };
+      
+      weekObj.days.forEach((day, i) => {
+        const dayNames = ["CN", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+        const dayName = dayNames[new Date(day.dateStr).getDay()];
+        row[`${dayName} ${day.dayNum}/${day.monthNum} KH`] = r.dayData[i].plan;
+        row[`${dayName} ${day.dayNum}/${day.monthNum} TT`] = r.dayData[i].actual;
+      });
+      
+      row["Tổng KHSX"] = r.totalPlan;
+      row["Tổng thực tế"] = r.totalActual;
+      row["Chênh lệch"] = r.diff;
+      
+      return row;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Báo cáo Tuần");
+    XLSX.writeFile(workbook, `Bao_cao_tuan_W${selectedReportWeek}_${selectedYear}.xlsx`);
+  };
 
   const displayMetrics = useMemo(() => {
     const baseMetrics = selectedYear === 2025 ? metrics2025 : processedMetrics2026;
@@ -4098,6 +4205,20 @@ export default function App() {
               >
                 <Calendar className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">KHSX Tháng</span>
+              </button>
+              <button
+                id="tab-weekly-report"
+                onClick={() => setActiveTab("weekly-report")}
+                className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                } ${
+                  activeTab === "weekly-report"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent font-bold"
+                }`}
+              >
+                <FileText className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Báo cáo Tuần</span>
               </button>
               <button
                 id="tab-history"
@@ -7549,6 +7670,409 @@ export default function App() {
 
 
           {/* ACTIVE TAB: HISTORY DATA */}
+          {activeTab === "weekly-report" && (
+            <motion.div
+              key="weekly-report"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* Controls */}
+              <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-rose-500/10 rounded-lg border border-rose-500/20">
+                    <FileSpreadsheet className="w-5 h-5 text-rose-500" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-white uppercase tracking-tight">Báo Cáo Kết Quả Sản Xuất Tuần</h2>
+                    <p className="text-xs text-slate-400">Chi tiết kế hoạch & thực tế toàn phân xưởng</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center bg-slate-950 border border-slate-700 rounded-lg overflow-hidden">
+                    <button 
+                      onClick={() => setSelectedReportWeek(prev => Math.max(1, prev - 1))}
+                      className="p-2 hover:bg-slate-800 text-slate-400 transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4 rotate-180" />
+                    </button>
+                    <select 
+                      value={selectedReportWeek} 
+                      onChange={(e) => setSelectedReportWeek(Number(e.target.value))}
+                      className="bg-transparent px-3 py-2 text-sm text-white focus:outline-none font-bold"
+                    >
+                      {getYearWeeks(selectedYear).map(w => (
+                        <option key={w.id} value={w.id} className="bg-slate-900 text-white">W{w.id}: {w.days[0].dateStr.split('-').reverse().slice(0,2).join('/')} - {w.days[w.days.length-1].dateStr.split('-').reverse().slice(0,2).join('/')}</option>
+                      ))}
+                    </select>
+                    <button 
+                      onClick={() => setSelectedReportWeek(prev => Math.min(53, prev + 1))}
+                      className="p-2 hover:bg-slate-800 text-slate-400 transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <button 
+                    onClick={handleExportWeeklyExcel}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-black transition cursor-pointer shadow-lg shadow-emerald-900/20 border border-emerald-400"
+                  >
+                    <Download className="w-4 h-4" /> XUẤT EXCEL
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Table Container */}
+              <div className="bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto overflow-y-auto max-h-[700px] scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                  <table className="w-full text-[11px] border-collapse min-w-[1200px]">
+                    <thead className="sticky top-0 z-20 bg-slate-950 shadow-md">
+                      {/* Top Header Row */}
+                      <tr className="bg-slate-900 text-white border-b border-slate-800">
+                        <th rowSpan={2} className="px-3 py-2 border-r border-slate-800 text-center sticky left-0 z-30 bg-slate-900">STT</th>
+                        <th rowSpan={2} className="px-3 py-2 border-r border-slate-800 text-left sticky left-[40px] z-30 bg-slate-900 min-w-[100px]">Mã SP</th>
+                        <th rowSpan={2} className="px-3 py-2 border-r border-slate-800 text-left sticky left-[140px] z-30 bg-slate-900 min-w-[200px]">Tên sản phẩm</th>
+                        <th rowSpan={2} className="px-2 py-2 border-r border-slate-800 text-center">ĐVT</th>
+                        <th rowSpan={2} className="px-2 py-2 border-r border-slate-800 text-center">Hệ số<br/>quy đổi</th>
+                        
+                        {weeklyReportData.weekObj?.days.map((day, i) => {
+                          const dayNames = ["Chủ Nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+                          const dayName = dayNames[new Date(day.dateStr).getDay()];
+                          return (
+                            <th key={i} colSpan={2} className="px-2 py-1 border-r border-slate-800 text-center font-black">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-400 uppercase tracking-tighter">{dayName}</span>
+                                <span className="text-white text-xs">{day.dayNum}/{day.monthNum}</span>
+                              </div>
+                            </th>
+                          );
+                        })}
+                        
+                        <th colSpan={3} className="px-3 py-1 border-slate-800 text-center font-black bg-slate-950 text-rose-500 uppercase tracking-widest border-l-2 border-l-rose-900/50">Kết quả SX</th>
+                      </tr>
+                      {/* Sub-Header Row */}
+                      <tr className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                        {weeklyReportData.weekObj?.days.map((_, i) => (
+                          <React.Fragment key={i}>
+                            <th className="px-2 py-1.5 border-r border-slate-800 text-center font-mono text-[10px] bg-amber-500/5 text-amber-500">KH</th>
+                            <th className="px-2 py-1.5 border-r border-slate-800 text-center font-mono text-[10px] bg-emerald-500/5 text-emerald-500">TT</th>
+                          </React.Fragment>
+                        ))}
+                        <th className="px-2 py-1.5 border-r border-slate-800 text-center font-mono text-[10px] bg-rose-500/10 text-rose-500 border-l-2 border-l-rose-900/50">KHSX</th>
+                        <th className="px-2 py-1.5 border-r border-slate-800 text-center font-mono text-[10px] bg-rose-500/10 text-rose-500">TỔNG TT</th>
+                        <th className="px-2 py-1.5 border-slate-800 text-center font-mono text-[10px] bg-rose-500/10 text-rose-500">+/-</th>
+                      </tr>
+                    </thead>
+                    
+                    <tbody className="divide-y divide-slate-800/40">
+                      {weeklyReportData.rows.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-800/40 transition-colors group">
+                          <td className="px-3 py-2 border-r border-slate-800 text-center text-slate-500 font-mono sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800/80">{idx + 1}</td>
+                          <td className="px-3 py-2 border-r border-slate-800 text-white font-bold font-mono sticky left-[40px] z-10 bg-slate-900 group-hover:bg-slate-800/80">{row.product.code}</td>
+                          <td className="px-3 py-2 border-r border-slate-800 text-slate-300 font-medium sticky left-[140px] z-10 bg-slate-900 group-hover:bg-slate-800/80 line-clamp-1">{row.product.name}</td>
+                          <td className="px-2 py-2 border-r border-slate-800 text-center text-slate-400">{row.product.unit || "Cái"}</td>
+                          <td className="px-2 py-2 border-r border-slate-800 text-center text-amber-500 font-bold font-mono">{row.product.factor?.toFixed(2)}</td>
+                          
+                          {row.dayData.map((d, i) => (
+                            <React.Fragment key={i}>
+                              <td className={`px-2 py-2 border-r border-slate-800 text-center font-mono ${d.plan > 0 ? "text-slate-200" : "text-slate-700 opacity-30"}`}>
+                                {d.plan > 0 ? d.plan.toLocaleString() : "-"}
+                              </td>
+                              <td className={`px-2 py-2 border-r border-slate-800 text-center font-mono font-bold ${d.actual > 0 ? (d.actual >= d.plan ? "text-emerald-400" : "text-amber-400") : "text-slate-700 opacity-30"}`}>
+                                {d.actual > 0 ? d.actual.toLocaleString() : "-"}
+                              </td>
+                            </React.Fragment>
+                          ))}
+                          
+                          <td className="px-2 py-2 border-r border-slate-800 text-center font-mono font-black text-white bg-slate-900/40 border-l-2 border-l-rose-900/50">{row.totalPlan.toLocaleString()}</td>
+                          <td className="px-2 py-2 border-r border-slate-800 text-center font-mono font-black text-rose-500 bg-slate-900/40">{row.totalActual.toLocaleString()}</td>
+                          <td className={`px-2 py-2 text-center font-mono font-black border-slate-800 bg-slate-900/40 ${row.diff >= 0 ? "text-emerald-400" : "text-rose-600"}`}>
+                            {row.diff > 0 ? `+${row.diff.toLocaleString()}` : row.diff.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+
+                    {/* Footer Rows for Totals */}
+                    <tfoot className="sticky bottom-0 z-20 bg-slate-950 font-black uppercase text-[10px]">
+                      {/* Unconverted Total */}
+                      <tr className="bg-orange-500/10 text-orange-400 border-t-2 border-orange-900/50">
+                        <td colSpan={3} className="px-4 py-3 border-r border-slate-800 text-left sticky left-0 z-10 bg-slate-950">Tổng sản phẩm chưa quy đổi</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">Chiếc</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">-</td>
+                        {weeklyReportData.dayTotals.map((d, i) => (
+                          <React.Fragment key={i}>
+                            <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{d.plan.toLocaleString()}</td>
+                            <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs text-orange-400">{d.actual.toLocaleString()}</td>
+                          </React.Fragment>
+                        ))}
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50">{weeklyReportData.grandTotal.plan?.toLocaleString()}</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{weeklyReportData.grandTotal.actual?.toLocaleString()}</td>
+                        <td className="px-2 py-3 text-center font-mono text-xs">{(weeklyReportData.grandTotal.actual - weeklyReportData.grandTotal.plan)?.toLocaleString()}</td>
+                      </tr>
+
+                      {/* Converted Total */}
+                      <tr className="bg-amber-500/10 text-amber-500 border-t border-slate-800">
+                        <td colSpan={3} className="px-4 py-3 border-r border-slate-800 text-left sticky left-0 z-10 bg-slate-950">Tổng sản phẩm quy đổi</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">Chiếc</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">-</td>
+                        {weeklyReportData.dayTotals.map((d, i) => (
+                          <React.Fragment key={i}>
+                            <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{Number(d.planEq.toFixed(2)).toLocaleString()}</td>
+                            <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs text-amber-400">{Number(d.actualEq.toFixed(2)).toLocaleString()}</td>
+                          </React.Fragment>
+                        ))}
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50">{Number((weeklyReportData.grandTotal.planEq || 0).toFixed(2)).toLocaleString()}</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{Number((weeklyReportData.grandTotal.actualEq || 0).toFixed(2)).toLocaleString()}</td>
+                        <td className="px-2 py-3 text-center font-mono text-xs">{Number(((weeklyReportData.grandTotal.actualEq || 0) - (weeklyReportData.grandTotal.planEq || 0)).toFixed(2)).toLocaleString()}</td>
+                      </tr>
+
+                      {/* Workers Total */}
+                      <tr className="bg-slate-900/60 text-slate-300 border-t border-slate-800">
+                        <td colSpan={3} className="px-4 py-3 border-r border-slate-800 text-left sticky left-0 z-10 bg-slate-950">Tổng số người (Công thao tác)</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">Người</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">-</td>
+                        {weeklyReportData.dayTotals.map((d, i) => (
+                          <React.Fragment key={i}>
+                            <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs text-slate-600">-</td>
+                            <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs text-emerald-400">{d.workers ? Number((d.workers as number).toFixed(2)).toLocaleString() : "-"}</td>
+                          </React.Fragment>
+                        ))}
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50 text-slate-600">-</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{weeklyReportData.grandTotal.workers ? Number(weeklyReportData.grandTotal.workers.toFixed(2)).toLocaleString() : "-"}</td>
+                        <td className="px-2 py-3 text-center font-mono text-xs text-slate-600">-</td>
+                      </tr>
+
+                      {/* Productivity Row */}
+                      <tr className="bg-emerald-500/10 text-emerald-400 border-t border-slate-800">
+                        <td colSpan={3} className="px-4 py-3 border-r border-slate-800 text-left sticky left-0 z-10 bg-slate-950">Hiệu suất NSLĐ (Chấm)</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">Chấm</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">9.03</td>
+                        {weeklyReportData.dayTotals.map((d, i) => {
+                          const dots = d.workers > 0 ? (d.actualEq / d.workers) : 0;
+                          return (
+                            <React.Fragment key={i}>
+                              <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs text-slate-600">-</td>
+                              <td className={`px-2 py-3 border-r border-slate-800 text-center font-mono text-xs font-black ${dots >= 9.03 ? "text-emerald-400" : "text-amber-400"}`}>
+                                {dots > 0 ? dots.toFixed(2) : "-"}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50 text-slate-600">-</td>
+                        <td className={`px-2 py-3 border-r border-slate-800 text-center font-mono text-xs font-black ${((weeklyReportData.grandTotal.actualEq / (weeklyReportData.grandTotal.workers * (weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length || 1)))) >= 9.03 ? "text-rose-500" : "text-amber-500"}`}>
+                          {/* Use weekly calculation logic */}
+                          {(() => {
+                            const totalDaysWithWorkers = weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length;
+                            const totalMandays = weeklyReportData.grandTotal.workers * totalDaysWithWorkers;
+                            const avgDots = totalMandays > 0 ? (weeklyReportData.grandTotal.actualEq / totalMandays) : 0;
+                            return avgDots > 0 ? avgDots.toFixed(2) : "-";
+                          })()}
+                        </td>
+                        <td className="px-2 py-3 text-center font-mono text-xs text-slate-600">-</td>
+                      </tr>
+
+                      {/* Productivity Percent Row */}
+                      <tr className="bg-emerald-500/5 text-emerald-400/80 border-t border-slate-800">
+                        <td colSpan={3} className="px-4 py-3 border-r border-slate-800 text-left sticky left-0 z-10 bg-slate-950">Hiệu suất NSLĐ (%)</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">%</td>
+                        <td className="px-2 py-3 border-r border-slate-800 text-center">100%</td>
+                        {weeklyReportData.dayTotals.map((d, i) => {
+                          const dots = d.workers > 0 ? (d.actualEq / (d.workers as number)) : 0;
+                          const percent = (dots / 9.03) * 100;
+                          return (
+                            <React.Fragment key={i}>
+                              <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs text-slate-600">-</td>
+                              <td className={`px-2 py-3 border-r border-slate-800 text-center font-mono text-xs font-bold ${percent >= 100 ? "text-emerald-500" : "text-amber-500"}`}>
+                                {dots > 0 ? `${percent.toFixed(1)}%` : "-"}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                        <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50 text-slate-600">-</td>
+                        <td className={`px-2 py-3 border-r border-slate-800 text-center font-mono text-xs font-bold ${((weeklyReportData.grandTotal.actualEq / (weeklyReportData.grandTotal.workers * (weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length || 1))) / 9.03 * 100) >= 100 ? "text-emerald-500" : "text-amber-500"}`}>
+                          {(() => {
+                            const totalDaysWithWorkers = weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length;
+                            const totalMandays = weeklyReportData.grandTotal.workers * totalDaysWithWorkers;
+                            const avgDots = totalMandays > 0 ? (weeklyReportData.grandTotal.actualEq / totalMandays) : 0;
+                            const avgPercent = (avgDots / 9.03) * 100;
+                            return avgDots > 0 ? `${avgPercent.toFixed(1)}%` : "-";
+                          })()}
+                        </td>
+                        <td className="px-2 py-3 text-center font-mono text-xs text-slate-600">-</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {/* Bottom Summary & Charts Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Weekly Summary Card */}
+                <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 flex flex-col justify-between shadow-lg">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-rose-500" />
+                      TỔNG KẾT TUẦN W{selectedReportWeek}
+                    </h3>
+                    
+                    <div className="grid grid-cols-3 gap-4 pt-2">
+                      <div className="text-center p-3 bg-slate-950/50 rounded-lg border border-slate-800">
+                        <span className="block text-[10px] text-slate-500 font-mono uppercase mb-1">KH (Tuần)</span>
+                        <span className="text-xl font-black text-white font-mono">{weeklyReportData.grandTotal.planEq > 0 ? Math.round(weeklyReportData.grandTotal.planEq).toLocaleString() : "0"}</span>
+                      </div>
+                      <div className="text-center p-3 bg-slate-950/50 rounded-lg border border-slate-800">
+                        <span className="block text-[10px] text-slate-500 font-mono uppercase mb-1">TH (Tuần)</span>
+                        <span className="text-xl font-black text-emerald-400 font-mono">{weeklyReportData.grandTotal.actualEq > 0 ? Math.round(weeklyReportData.grandTotal.actualEq).toLocaleString() : "0"}</span>
+                      </div>
+                      <div className="text-center p-3 bg-slate-950/50 rounded-lg border border-slate-800">
+                        <span className="block text-[10px] text-slate-500 font-mono uppercase mb-1">Tỉ lệ (%)</span>
+                        <span className={`text-xl font-black font-mono ${weeklyReportData.grandTotal.actualEq >= weeklyReportData.grandTotal.planEq ? "text-emerald-400" : "text-rose-500"}`}>
+                          {weeklyReportData.grandTotal.planEq > 0 ? `${(weeklyReportData.grandTotal.actualEq / weeklyReportData.grandTotal.planEq * 100).toFixed(1)}%` : "0%"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span>Trạng thái tuần:</span>
+                        {(() => {
+                          const data = weeklyReportData as any;
+                          const lastDayWithDataIndex = [...data.dayTotals].reverse().findIndex((d: any) => d.actualEq > 0);
+                          const lastIndex = lastDayWithDataIndex === -1 ? -1 : data.dayTotals.length - 1 - lastDayWithDataIndex;
+                          
+                          const isCumulativeAchieved = data.cumulativeActualEq >= data.cumulativePlanEq && data.cumulativePlanEq > 0;
+                          const isTodayAchieved = lastIndex >= 0 ? data.dayTotals[lastIndex].actualEq >= data.dayTotals[lastIndex].planEq : false;
+                          
+                          // Cumulative failure overrides today's success
+                          // If cumulative is achieved, but today failed, we still show ĐẠT (on track) 
+                          // unless today's achievement is the primary indicator user wants.
+                          // Based on "ngày đạt thì tuần đạt", but "lũy kế không đạt thì chưa đạt":
+                          const status = isCumulativeAchieved ? "ĐẠT KẾ HOẠCH" : "CHƯA ĐẠT KẾ HOẠCH";
+                          const color = isCumulativeAchieved ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-500";
+                          
+                          return (
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${color}`}>
+                              {status}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span>NSLĐ Trung bình:</span>
+                        <div className="text-right">
+                          <span className={`text-xl font-black font-mono block ${((weeklyReportData.grandTotal.actualEq / (weeklyReportData.grandTotal.workers * (weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length || 1))) / 9.03 * 100) >= 100 ? "text-emerald-400" : "text-amber-400"}`}>
+                            {(() => {
+                              const totalDaysWithWorkers = weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length;
+                              const totalMandays = weeklyReportData.grandTotal.workers * totalDaysWithWorkers;
+                              const avgDots = totalMandays > 0 ? (weeklyReportData.grandTotal.actualEq / totalMandays) : 0;
+                              const avgPercent = (avgDots / 9.03) * 100;
+                              return `${avgPercent.toFixed(1)}%`;
+                            })()}
+                          </span>
+                          <span className="text-white/60 font-bold font-mono text-[10px]">
+                            {(() => {
+                              const totalDaysWithWorkers = weeklyReportData.dayTotals.filter(d => (d.workers as number) > 0).length;
+                              const totalMandays = weeklyReportData.grandTotal.workers * totalDaysWithWorkers;
+                              const avgDots = totalMandays > 0 ? (weeklyReportData.grandTotal.actualEq / totalMandays) : 0;
+                              return `${avgDots.toFixed(2)} Chấm / Định mức 9.03`;
+                            })()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 pt-6 border-t border-slate-800/60">
+                    <div className="flex items-center gap-3 p-3 bg-rose-500/5 rounded-lg border border-rose-500/10 text-[11px] text-rose-200/70 leading-relaxed">
+                      <Info className="w-4 h-4 text-rose-500 shrink-0" />
+                      Số liệu được tổng hợp từ nhật ký sản xuất hằng ngày và kế hoạch tháng đã thiết lập.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chart Card */}
+                <div className="lg:col-span-2 bg-slate-900/40 p-6 rounded-xl border border-slate-800 shadow-lg">
+                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-emerald-500" />
+                      BIỂU ĐỒ NĂNG SUẤT VÀ SẢN LƯỢNG {filterDivision === "ALL" ? "PHÂN XƯỞNG" : filterDivision}
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-700"></div>
+                        <span className="text-[10px] font-mono">KH (Quy đổi)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+                        <span className="text-[10px] font-mono">TH (Thực tế)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                        <span className="text-[10px] font-mono">NSLĐ (%)</span>
+                      </div>
+                    </div>
+                  </h3>
+                  
+                  <div className="h-[250px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={weeklyReportData.dayTotals.map((d, i) => ({
+                        name: weeklyReportData.weekObj?.days[i].dayNum + "/" + weeklyReportData.weekObj?.days[i].monthNum,
+                        kh: Math.round(d.planEq),
+                        tt: Math.round(d.actualEq),
+                        prod: d.workers > 0 ? Number(((d.actualEq / (d.workers as number)) / 9.03 * 100).toFixed(1)) : 0
+                      }))} margin={{ top: 30, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                        <XAxis 
+                          dataKey="name" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                          dy={10}
+                        />
+                        <YAxis 
+                          yId="left"
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }}
+                        />
+                        <YAxis 
+                          yId="right"
+                          orientation="right"
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#10b981', fontSize: 11, fontWeight: 'bold' }}
+                          domain={[0, 160]}
+                          unit="%"
+                        />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '12px' }}
+                          itemStyle={{ fontSize: '11px', fontWeight: 'bold' }}
+                          labelStyle={{ color: '#94a3b8', marginBottom: '8px', fontSize: '12px' }}
+                        />
+                        <ReferenceLine yId="right" y={100} stroke="#475569" strokeWidth={1} strokeDasharray="3 3" label={{ position: 'right', value: '100%', fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }} />
+                        
+                        <Bar yId="left" dataKey="kh" fill="#3b82f6" radius={[2, 2, 0, 0]} name="Kế hoạch (QĐ)" barSize={20}>
+                          <LabelList dataKey="kh" position="top" fill="#3b82f6" fontSize={10} fontWeight="bold" offset={5} formatter={(val: number) => val > 0 ? val.toLocaleString() : ""} />
+                        </Bar>
+                        <Bar yId="left" dataKey="tt" fill="#ef4444" radius={[2, 2, 0, 0]} name="Thực tế (QĐ)" barSize={20}>
+                          <LabelList dataKey="tt" position="top" fill="#ef4444" fontSize={10} fontWeight="bold" offset={5} formatter={(val: number) => val > 0 ? val.toLocaleString() : ""} />
+                        </Bar>
+                        
+                        <Line yId="right" type="monotone" dataKey="prod" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#0f172a' }} name="NSLĐ (%)">
+                          <LabelList dataKey="prod" position="top" fill="#ef4444" fontSize={18} fontWeight="900" offset={25} formatter={(val: number) => val > 0 ? `${val}%` : ""} />
+                        </Line>
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {activeTab === "history-data" && (
             <motion.div
               key="history-data"
