@@ -1703,14 +1703,52 @@ export default function App() {
 
       const totalPlan = dayData.reduce((sum, d) => sum + d.plan, 0);
       const totalActual = dayData.reduce((sum, d) => sum + d.actual, 0);
-      const diff = totalActual - totalPlan;
+
+      // --- CUMULATIVE CALCULATION FOR +/- COLUMN ---
+      const endOfWeekDateStr = weekObj.days[weekObj.days.length - 1].dateStr;
+      
+      // All-time actual for this product up to the end of the current selected week
+      const allTimeActual = productionLogs
+        .filter(l => l.productId === product.id && l.date <= endOfWeekDateStr)
+        .reduce((sum, l) => sum + l.actualUnits, 0);
+      
+      const allTimeActualEq = allTimeActual * (product.factor || 1);
+        
+      // Total plan for this product up to the end of the current selected week
+      let allTimePlan = 0;
+      Object.entries(monthlyPlan).forEach(([yearMonth, productPlans]) => {
+        const [pYear, pMonth] = yearMonth.split('-').map(Number);
+        const [eYear, eMonth, eDay] = endOfWeekDateStr.split('-').map(Number);
+        
+        if (pYear < eYear || (pYear === eYear && pMonth < eMonth)) {
+          // Full previous months
+          const pPlan = productPlans[product.id] || {};
+          Object.values(pPlan).forEach(val => allTimePlan += (val as number));
+        } else if (pYear === eYear && pMonth === eMonth) {
+          // Current selected month up to end of selected week
+          const pPlan = productPlans[product.id] || {};
+          Object.entries(pPlan).forEach(([day, val]) => {
+            if (Number(day) <= eDay) allTimePlan += (val as number);
+          });
+        }
+      });
+      
+      const allTimePlanEq = allTimePlan * (product.factor || 1);
+
+      const diff = allTimeActual - allTimePlan;
+      const diffEq = allTimeActualEq - allTimePlanEq;
 
       return {
         product,
         dayData,
         totalPlan,
         totalActual,
-        diff
+        allTimeActual,
+        allTimePlan,
+        allTimeActualEq,
+        allTimePlanEq,
+        diff,
+        diffEq
       };
     }).filter(row => row.totalPlan > 0 || row.totalActual > 0);
 
@@ -1737,7 +1775,11 @@ export default function App() {
       actual: dayTotals.reduce((sum: number, d) => sum + d.actual, 0),
       planEq: dayTotals.reduce((sum: number, d) => sum + d.planEq, 0),
       actualEq: dayTotals.reduce((sum: number, d) => sum + d.actualEq, 0),
-      workers: dayTotals.reduce((sum: number, d) => sum + (d.workers as number), 0) / (dayTotals.filter(d => (d.workers as number) > 0).length || 1)
+      workers: dayTotals.reduce((sum: number, d) => sum + (d.workers as number), 0) / (dayTotals.filter(d => (d.workers as number) > 0).length || 1),
+      allTimeActual: rows.reduce((sum, r) => sum + (r as any).allTimeActual, 0),
+      allTimePlan: rows.reduce((sum, r) => sum + (r as any).allTimePlan, 0),
+      allTimeActualEq: rows.reduce((sum, r) => sum + (r as any).allTimeActualEq, 0),
+      allTimePlanEq: rows.reduce((sum, r) => sum + (r as any).allTimePlanEq, 0)
     };
 
     // Calculate cumulative values up to the last day with production
@@ -7811,7 +7853,7 @@ export default function App() {
                         ))}
                         <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50">{weeklyReportData.grandTotal.plan?.toLocaleString()}</td>
                         <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{weeklyReportData.grandTotal.actual?.toLocaleString()}</td>
-                        <td className="px-2 py-3 text-center font-mono text-xs">{(weeklyReportData.grandTotal.actual - weeklyReportData.grandTotal.plan)?.toLocaleString()}</td>
+                        <td className="px-2 py-3 text-center font-mono text-xs text-emerald-400">{(weeklyReportData.grandTotal.allTimeActual - weeklyReportData.grandTotal.allTimePlan)?.toLocaleString()}</td>
                       </tr>
 
                       {/* Converted Total */}
@@ -7827,7 +7869,7 @@ export default function App() {
                         ))}
                         <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs border-l-2 border-l-rose-900/50">{Number((weeklyReportData.grandTotal.planEq || 0).toFixed(2)).toLocaleString()}</td>
                         <td className="px-2 py-3 border-r border-slate-800 text-center font-mono text-xs">{Number((weeklyReportData.grandTotal.actualEq || 0).toFixed(2)).toLocaleString()}</td>
-                        <td className="px-2 py-3 text-center font-mono text-xs">{Number(((weeklyReportData.grandTotal.actualEq || 0) - (weeklyReportData.grandTotal.planEq || 0)).toFixed(2)).toLocaleString()}</td>
+                        <td className="px-2 py-3 text-center font-mono text-xs text-emerald-400">{Number((weeklyReportData.grandTotal.allTimeActualEq - weeklyReportData.grandTotal.allTimePlanEq).toFixed(2)).toLocaleString()}</td>
                       </tr>
 
                       {/* Workers Total */}
