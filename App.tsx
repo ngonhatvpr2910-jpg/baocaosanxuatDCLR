@@ -5993,8 +5993,8 @@ export default function App() {
 
                           {/* Productivity RO % */}
                           {(filterDivision === "ALL" || filterDivision === "MLN") && (
-                            <tr key="productivity-ro-row" className="bg-slate-900 font-bold border-t border-slate-800">
-                              <td colSpan={3} className="py-1 px-1 text-right text-emerald-400 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
+                            <tr key="productivity-ro-row" className="bg-slate-800 font-bold border-t border-slate-700 text-slate-200 text-[14px]">
+                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-700 sticky left-0 bg-slate-800 z-10 whitespace-nowrap">
                                 NSLĐ DCRO (%)
                               </td>
                               {formSlots.map(slot => {
@@ -6012,12 +6012,12 @@ export default function App() {
                                   prodPct = Number(((sumEqRO / (workersRO * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className={`py-1 px-1 border-r border-slate-800 min-w-[80px] w-[80px] text-center ${prodPct >= kpis.monthTarget ? "text-emerald-400" : prodPct >= 100 ? "text-amber-400" : "text-rose-400"}`}>
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-700 min-w-[80px] w-[80px] text-center text-slate-200">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-800 text-emerald-400">{formAggregates.avgProductivityRO}%</td>
+                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{formAggregates.avgProductivityRO}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -6026,8 +6026,8 @@ export default function App() {
 
                           {/* Productivity RMA % */}
                           {(filterDivision === "ALL" || filterDivision === "MLN" || filterDivision === "RMA") && (
-                            <tr key="productivity-rma-row" className="bg-slate-900 font-bold border-t border-slate-800">
-                              <td colSpan={3} className="py-1 px-1 text-right text-amber-400 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
+                            <tr key="productivity-rma-row" className="bg-slate-800 font-bold border-t border-slate-700 text-slate-200 text-[14px]">
+                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-700 sticky left-0 bg-slate-800 z-10 whitespace-nowrap">
                                 NSLĐ DCRMA (%)
                               </td>
                               {formSlots.map(slot => {
@@ -6051,12 +6051,12 @@ export default function App() {
                                   prodPct = Number(((sumEqRMA / (workersRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className={`py-1 px-1 border-r border-slate-800 min-w-[80px] w-[80px] text-center ${prodPct >= 100 ? "text-emerald-400" : prodPct > 0 ? "text-amber-400" : "text-rose-400"}`}>
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-700 min-w-[80px] w-[80px] text-center text-slate-200">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-800 text-amber-400">{formAggregates.avgProductivityRMA}%</td>
+                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{formAggregates.avgProductivityRMA}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -6065,8 +6065,8 @@ export default function App() {
 
                           {/* Productivity BG % */}
                           {(filterDivision === "ALL" || filterDivision === "BG") && (
-                            <tr key="productivity-bg-row" className="bg-slate-900 font-bold">
-                              <td colSpan={3} className="py-1 px-1 text-right text-sky-400 border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
+                            <tr key="productivity-bg-row" className="bg-slate-800 font-bold border-t border-slate-700 text-slate-200 text-[14px]">
+                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-700 sticky left-0 bg-slate-800 z-10 whitespace-nowrap">
                                 NSLĐ DCBG (%)
                               </td>
                               {formSlots.map(slot => {
@@ -6083,12 +6083,12 @@ export default function App() {
                                   prodPct = Number(((sumEqBG / (workersBG * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className={`py-1 px-1 border-r border-slate-800 min-w-[80px] w-[80px] text-center ${prodPct >= kpis.monthTarget ? "text-sky-400" : prodPct >= 100 ? "text-amber-400" : "text-rose-400"}`}>
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-700 min-w-[80px] w-[80px] text-center text-slate-200">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-800 text-sky-400">{formAggregates.avgProductivityBG}%</td>
+                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{formAggregates.avgProductivityBG}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -6097,8 +6097,8 @@ export default function App() {
 
                           {/* Combined Productivity % */}
                           {filterDivision === "ALL" && (
-                            <tr key="productivity-combined-row" className="bg-slate-900/40 font-semibold text-slate-400">
-                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-800 sticky left-0 bg-slate-900/40 z-10 whitespace-nowrap">
+                            <tr key="productivity-combined-row" className="bg-slate-700/80 font-black text-white border-t border-slate-600 text-[15px]">
+                              <td colSpan={3} className="py-2 px-1 text-right border-r border-slate-600 sticky left-0 bg-slate-700/80 z-10 whitespace-nowrap uppercase tracking-wide">
                                 NSLĐ Phân Xưởng LR (%)
                               </td>
                               {formSlots.map(slot => {
@@ -6113,15 +6113,15 @@ export default function App() {
                                   prodPct = Number(((sumEqCombined / (workersCombined * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-800 min-w-[80px] w-[80px] text-center">
+                                  <td key={slot} className="py-2 px-1 border-r border-slate-600 min-w-[80px] w-[80px] text-center text-white">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-800">{formAggregates.avgProductivity}%</td>
-                              <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
-                              <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
-                              <td></td>
+                              <td className="py-2 px-1 border-r border-slate-600">{formAggregates.avgProductivity}%</td>
+                              <td className="py-2 px-1 border-r border-slate-600 text-slate-300">-</td>
+                              <td className="py-2 px-1 border-r border-slate-600 text-slate-300">-</td>
+                              <td className="bg-slate-700/80"></td>
                             </tr>
                           )}
 
@@ -6182,16 +6182,16 @@ export default function App() {
                                 <td></td>
                               </tr>
 
-                              <tr key="ro-total-workers" className="bg-emerald-950/30">
-                                <td colSpan={3} className="py-1 px-2 text-right text-emerald-400 font-bold border-r border-slate-800 sticky left-0 bg-emerald-950/90 z-10 pl-4 whitespace-nowrap">
+                              <tr key="ro-total-workers" className="bg-emerald-950/30 text-[14px]">
+                                <td colSpan={3} className="py-2 px-2 text-right text-emerald-400 font-bold border-r border-slate-800 sticky left-0 bg-emerald-950/90 z-10 pl-4 whitespace-nowrap">
                                   ↳ Tổng nhân sự DCRO
                                 </td>
                                 {formSlots.map(slot => (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-800 text-emerald-400 font-bold min-w-[80px] w-[80px] text-center">
+                                  <td key={slot} className="py-2 px-1 border-r border-slate-800 text-emerald-400 font-bold min-w-[80px] w-[80px] text-center">
                                     {(formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0)}
                                   </td>
                                 ))}
-                                <td className="py-1 px-1 border-r border-slate-800 text-emerald-400 font-bold text-center">
+                                <td className="py-2 px-1 border-r border-slate-800 text-emerald-400 font-bold text-center">
                                   {formWorkersCountRO}
                                 </td>
                                 <td className="border-r border-slate-800"></td>
@@ -6254,16 +6254,16 @@ export default function App() {
                                 <td></td>
                               </tr>
 
-                              <tr key="rma-total-workers" className="bg-amber-950/30">
-                                <td colSpan={3} className="py-1 px-2 text-right text-amber-400 font-bold border-r border-slate-800 sticky left-0 bg-amber-950/90 z-10 pl-4 whitespace-nowrap">
+                              <tr key="rma-total-workers" className="bg-amber-950/30 text-[14px]">
+                                <td colSpan={3} className="py-2 px-2 text-right text-amber-400 font-bold border-r border-slate-800 sticky left-0 bg-amber-950/90 z-10 pl-4 whitespace-nowrap">
                                   ↳ Tổng nhân sự DCRMA
                                 </td>
                                 {formSlots.map(slot => (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-800 text-amber-400 font-bold min-w-[80px] w-[80px] text-center">
+                                  <td key={slot} className="py-2 px-1 border-r border-slate-800 text-amber-400 font-bold min-w-[80px] w-[80px] text-center">
                                     {(formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0)}
                                   </td>
                                 ))}
-                                <td className="py-1 px-1 border-r border-slate-800 text-amber-400 font-bold text-center">
+                                <td className="py-2 px-1 border-r border-slate-800 text-amber-400 font-bold text-center">
                                   {formWorkersCountRMA}
                                 </td>
                                 <td className="border-r border-slate-800"></td>
@@ -6329,16 +6329,16 @@ export default function App() {
                                 <td></td>
                               </tr>
 
-                              <tr key="bg-total-workers" className="bg-sky-950/30">
-                                <td colSpan={3} className="py-1 px-2 text-right text-sky-400 font-bold border-r border-slate-800 sticky left-0 bg-sky-950/90 z-10 pl-4 whitespace-nowrap">
+                              <tr key="bg-total-workers" className="bg-sky-950/30 text-[14px]">
+                                <td colSpan={3} className="py-2 px-2 text-right text-sky-400 font-bold border-r border-slate-800 sticky left-0 bg-sky-950/90 z-10 pl-4 whitespace-nowrap">
                                   ↳ Tổng nhân sự DCBG
                                 </td>
                                 {formSlots.map(slot => (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-800 text-sky-400 font-bold min-w-[80px] w-[80px] text-center">
+                                  <td key={slot} className="py-2 px-1 border-r border-slate-800 text-sky-400 font-bold min-w-[80px] w-[80px] text-center">
                                     {(formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0)}
                                   </td>
                                 ))}
-                                <td className="py-1 px-1 border-r border-slate-800 text-sky-400 font-bold text-center">
+                                <td className="py-2 px-1 border-r border-slate-800 text-sky-400 font-bold text-center">
                                   {formWorkersCountBG}
                                 </td>
                                 <td className="border-r border-slate-800"></td>
@@ -6355,24 +6355,24 @@ export default function App() {
 
                           {/* Combined Grand Total Workers */}
                           {filterDivision === "ALL" && (
-                            <tr key="grand-total-workers" className="bg-slate-900 border-t border-slate-700">
-                              <td colSpan={3} className="py-1 px-1 text-right text-white font-bold border-r border-slate-800 sticky left-0 bg-slate-900 z-10 whitespace-nowrap">
-                                Tổng nhân sự Phân Xưởng LR (RO + RMA + BG)
+                            <tr key="grand-total-workers" className="bg-slate-700/80 border-t border-slate-600 text-white font-black text-[15px]">
+                              <td colSpan={3} className="py-2 px-1 text-right border-r border-slate-600 sticky left-0 bg-slate-700/80 z-10 whitespace-nowrap uppercase tracking-wide">
+                                Tổng công các Dây chuyền
                               </td>
                               {formSlots.map(slot => {
                                 const totalH = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0) + (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0) + (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
                                 return (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-800 text-white font-bold min-w-[80px] w-[80px] text-center">
+                                  <td key={slot} className="py-2 px-1 border-r border-slate-600 text-white min-w-[80px] w-[80px] text-center">
                                     {totalH}
                                   </td>
                                 );
                               })}
-                              <td className="py-1 px-1 border-r border-slate-800 text-white font-bold">
+                              <td className="py-2 px-1 border-r border-slate-600 text-white">
                                 {formWorkersCount}
                               </td>
-                              <td className="border-r border-slate-800"></td>
-                              <td className="border-r border-slate-800"></td>
-                              <td></td>
+                              <td className="border-r border-slate-600"></td>
+                              <td className="border-r border-slate-600"></td>
+                              <td className="bg-slate-700/80"></td>
                             </tr>
                           )}
                           
@@ -6389,30 +6389,30 @@ export default function App() {
                         </h4>
                         <div className="h-[360px] w-full mt-2">
                           <ResponsiveContainer width="99%" height="100%">
-                            <ComposedChart data={formHourlyChartData} margin={{ top: 40, right: 10, left: -20, bottom: 5 }}>
+                            <ComposedChart data={formHourlyChartData} margin={{ top: 75, right: 10, left: -20, bottom: 5 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                              <XAxis dataKey="slot" stroke="#64748b" fontSize={10} tickMargin={5} />
-                              <YAxis domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={10} />
+                              <XAxis dataKey="slot" stroke="#64748b" fontSize={12} tickMargin={5} />
+                              <YAxis domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={12} />
                               <Tooltip
                                 contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "6px" }}
-                                itemStyle={{ fontSize: "11px" }}
-                                labelStyle={{ color: "#94a3b8", fontSize: "11px", marginBottom: "4px" }}
+                                itemStyle={{ fontSize: "13px" }}
+                                labelStyle={{ color: "#94a3b8", fontSize: "13px", marginBottom: "4px" }}
                                 formatter={(value: any, name: any) => [`${value}%`, name]}
                                 cursor={{ fill: '#1e293b', opacity: 0.4 }}
                               />
-                              <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                              <Legend iconType="circle" wrapperStyle={{ fontSize: '13px', paddingTop: '10px' }} />
                               <ReferenceLine y={kpis.monthTarget} stroke="#10b981" strokeDasharray="3 3" />
                               <Bar isAnimationActive={false} dataKey="DCRO" name="NSLĐ DCRO" fill="#10b981" radius={[2, 2, 0, 0]}>
-                                <LabelList dataKey="DCRO" position="top" offset={5} fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                                <LabelList dataKey="DCRO" position="top" offset={5} fill="#10b981" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                               </Bar>
                               <Bar isAnimationActive={false} dataKey="DCRMA" name="NSLĐ DCRMA" fill="#f59e0b" radius={[2, 2, 0, 0]}>
-                                <LabelList dataKey="DCRMA" position="top" offset={5} fill="#f59e0b" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                                <LabelList dataKey="DCRMA" position="top" offset={22} fill="#f59e0b" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                               </Bar>
                               <Bar isAnimationActive={false} dataKey="DCBG" name="NSLĐ DCBG" fill="#0ea5e9" radius={[2, 2, 0, 0]}>
-                                <LabelList dataKey="DCBG" position="top" offset={5} fill="#0ea5e9" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                                <LabelList dataKey="DCBG" position="top" offset={39} fill="#0ea5e9" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                               </Bar>
                               <Line isAnimationActive={false} type="monotone" dataKey="DCLR" name="NSLĐ Phân Xưởng LR" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4, fill: "#f43f5e" }} activeDot={{ r: 6 }}>
-                                <LabelList dataKey="DCLR" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} offset={12} />
+                                <LabelList dataKey="DCLR" position="top" fill="#f43f5e" fontSize={13} fontWeight="bold" formatter={(v: number) => v > 0 ? `${v}%` : ''} offset={56} />
                               </Line>
                             </ComposedChart>
                           </ResponsiveContainer>
