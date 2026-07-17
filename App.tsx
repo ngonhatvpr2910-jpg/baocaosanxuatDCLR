@@ -109,7 +109,7 @@ export interface YearWeek {
   label: string;
 }
 
-export function getYearWeeks(year: number): YearWeek[] {
+export function getStandardYearWeeks(year: number): YearWeek[] {
   const weeks: YearWeek[] = [];
   let currentWeekDays: { dateStr: string; dayNum: number; monthNum: number }[] = [];
   let weekIndex = 1;
@@ -123,6 +123,58 @@ export function getYearWeeks(year: number): YearWeek[] {
 
       // Monday starts a new week!
       if (dayOfWeek === 1 && currentWeekDays.length > 0) {
+        weeks.push({
+          id: weekIndex,
+          days: [...currentWeekDays],
+          label: ""
+        });
+        weekIndex++;
+        currentWeekDays = [];
+      }
+
+      currentWeekDays.push({ dateStr, dayNum: d, monthNum: m });
+    }
+  }
+
+  if (currentWeekDays.length > 0) {
+    weeks.push({
+      id: weekIndex,
+      days: [...currentWeekDays],
+      label: ""
+    });
+  }
+
+  const getDayName = (y: number, mon: number, day: number) => {
+    const dayNames = ["CN", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+    return dayNames[new Date(y, mon - 1, day).getDay()];
+  };
+
+  return weeks.map(w => {
+    const first = w.days[0];
+    const last = w.days[w.days.length - 1];
+    const firstLabel = `${getDayName(year, first.monthNum, first.dayNum)} ${String(first.dayNum).padStart(2, '0')}/${String(first.monthNum).padStart(2, '0')}`;
+    const lastLabel = `${getDayName(year, last.monthNum, last.dayNum)} ${String(last.dayNum).padStart(2, '0')}/${String(last.monthNum).padStart(2, '0')}`;
+    return {
+      ...w,
+      label: `Tuần W${w.id} (${firstLabel} - ${lastLabel})`
+    };
+  });
+}
+
+export function getYearWeeks(year: number): YearWeek[] {
+  const weeks: YearWeek[] = [];
+  let currentWeekDays: { dateStr: string; dayNum: number; monthNum: number }[] = [];
+  let weekIndex = 1;
+
+  for (let m = 1; m <= 12; m++) {
+    const daysInMonth = new Date(year, m, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, m - 1, d);
+      const dayOfWeek = date.getDay(); // 0: CN, 1: T2, ..., 5: T6, 6: T7
+      const dateStr = `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+      // Friday starts a new week!
+      if (dayOfWeek === 5 && currentWeekDays.length > 0) {
         weeks.push({
           id: weekIndex,
           days: [...currentWeekDays],
@@ -1737,7 +1789,7 @@ export default function App() {
   const chartWeeklyDclrError = useMemo(() => displayWeeklyDclrError.filter(e => e.errorRate !== null), [displayWeeklyDclrError]);
 
   const weeklyReportData = useMemo(() => {
-    const weeks = getYearWeeks(selectedYear);
+    const weeks = getStandardYearWeeks(selectedYear);
     const weekObj = weeks.find(w => w.id === selectedReportWeek);
     if (!weekObj) return { rows: [], dayTotals: [], grandTotal: {} };
 
@@ -2119,11 +2171,10 @@ export default function App() {
       }
 
       // Group new daily logs into weeks
+      const allWeeks = getYearWeeks(parseInt(selectedYear));
       const getWeekNo = (dStr: string) => {
-        const d = new Date(dStr);
-        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
-        const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-        return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1)/7);
+        const week = allWeeks.find(w => w.days.some(d => d.dateStr === dStr));
+        return week ? week.id : 0;
       };
 
       const weeklyData: { [key: string]: { totalEq: number, mandays: number } } = {};
@@ -4457,6 +4508,73 @@ export default function App() {
                 <span className="tracking-wide">Dữ liệu hệ thống</span>
               </button>
             </div>
+            
+            {/* Right: Interactive Filters (Division + Year) */}
+            <div className="flex flex-wrap items-center gap-3 shrink-0 ml-4 py-1.5">
+              {/* Division Selection (DCRO / DCBG) */}
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
+                <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Bộ phận:</span>
+                <button
+                  id="filter-all"
+                  onClick={() => setFilterDivision("ALL")}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                    filterDivision === "ALL" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Tất cả
+                </button>
+                <button
+                  id="filter-mln"
+                  onClick={() => setFilterDivision("MLN")}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                    filterDivision === "MLN" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Droplet className="w-3.5 h-3.5 text-cyan-400" /> DCRO
+                </button>
+                <button
+                  id="filter-rma"
+                  onClick={() => setFilterDivision("RMA")}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                    filterDivision === "RMA" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5 text-amber-400" /> DCRMA
+                </button>
+                <button
+                  id="filter-bg"
+                  onClick={() => setFilterDivision("BG")}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
+                    filterDivision === "BG" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5 text-orange-500" /> DCBG
+                </button>
+              </div>
+              {/* Year Selection (2025 / 2026) */}
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
+                <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Năm:</span>
+                <button
+                  id="year-2025"
+                  onClick={() => setSelectedYear(2025)}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                    selectedYear === 2025 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  2025
+                </button>
+                <button
+                  id="year-2026"
+                  onClick={() => setSelectedYear(2026)}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                    selectedYear === 2026 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  2026
+                </button>
+              </div>
+            </div>
+            
           </div>
         </div>
       </div>
@@ -4509,73 +4627,6 @@ export default function App() {
                   >
                     📈 Biểu đồ Phân tích
                   </button>
-                </div>
-
-                {/* Right: Interactive Filters (Division + Year) */}
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* Division Selection (DCRO / DCBG) */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
-                    <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Bộ phận:</span>
-                    <button
-                      id="filter-all"
-                      onClick={() => setFilterDivision("ALL")}
-                      className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                        filterDivision === "ALL" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      id="filter-mln"
-                      onClick={() => setFilterDivision("MLN")}
-                      className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
-                        filterDivision === "MLN" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <Droplet className="w-3.5 h-3.5 text-cyan-400" /> DCRO
-                    </button>
-                    <button
-                      id="filter-rma"
-                      onClick={() => setFilterDivision("RMA")}
-                      className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
-                        filterDivision === "RMA" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <History className="w-3.5 h-3.5 text-amber-400" /> DCRMA
-                    </button>
-                    <button
-                      id="filter-bg"
-                      onClick={() => setFilterDivision("BG")}
-                      className={`px-3 py-1 rounded text-xs font-semibold transition flex items-center gap-1 cursor-pointer ${
-                        filterDivision === "BG" ? "bg-rose-600 text-white font-bold" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <Flame className="w-3.5 h-3.5 text-orange-500" /> DCBG
-                    </button>
-                  </div>
-
-                  {/* Year Selection (2025 / 2026) */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
-                    <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Năm:</span>
-                    <button
-                      id="year-2025"
-                      onClick={() => setSelectedYear(2025)}
-                      className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                        selectedYear === 2025 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      2025
-                    </button>
-                    <button
-                      id="year-2026"
-                      onClick={() => setSelectedYear(2026)}
-                      className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                        selectedYear === 2026 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      2026
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -7912,7 +7963,7 @@ export default function App() {
                       onChange={(e) => setSelectedReportWeek(Number(e.target.value))}
                       className="bg-transparent px-3 py-2 text-sm text-white focus:outline-none font-bold"
                     >
-                      {getYearWeeks(selectedYear).map(w => (
+                      {getStandardYearWeeks(selectedYear).map(w => (
                         <option key={w.id} value={w.id} className="bg-slate-900 text-white">W{w.id}: {w.days[0].dateStr.split('-').reverse().slice(0,2).join('/')} - {w.days[w.days.length-1].dateStr.split('-').reverse().slice(0,2).join('/')}</option>
                       ))}
                     </select>
