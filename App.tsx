@@ -1522,21 +1522,41 @@ export default function App() {
           ? logsForMonth
           : logsForMonth.filter((log) => log.date !== formDate);
 
-        const eqQty = filteredLogs.reduce((acc, curr) => acc + (curr.equivalentProducts || 0), 0);
-        const actualQty = filteredLogs.reduce((acc, curr) => acc + (curr.actualUnits || 0), 0);
+        let filteredByDivisionLogs = filteredLogs;
+        if (filterDivision !== "ALL") {
+          filteredByDivisionLogs = filteredLogs.filter(log => log.productGroup === filterDivision);
+        }
+
+        const eqQty = filteredByDivisionLogs.reduce((acc, curr) => acc + (curr.equivalentProducts || 0), 0);
+        const actualQty = filteredByDivisionLogs.reduce((acc, curr) => acc + (curr.actualUnits || 0), 0);
         
         // Sum unique shift workers
         const uniqueShiftWorkersMap: { [key: string]: number } = {};
-        filteredLogs.forEach((log) => {
+        filteredByDivisionLogs.forEach((log) => {
           const key = `${log.date}_${log.shift}_${log.lineId}`;
           uniqueShiftWorkersMap[key] = Math.max(uniqueShiftWorkersMap[key] || 0, log.workersCount || 0);
         });
         const workdays = Object.values(uniqueShiftWorkersMap).reduce((acc, val) => acc + (val || 0), 0);
 
-      if (filterDivision === "ALL") {
-        const addedEqQty = eqQty + (isFormMonth && !hasSavedFormDate ? formAggregates.totalEqQty : 0);
-        const addedActualQty = actualQty + (isFormMonth && !hasSavedFormDate ? formAggregates.totalActualQty : 0);
-        const addedWorkdays = workdays + (isFormMonth && !hasSavedFormDate ? formWorkersCount : 0);
+        let addedEqQty = eqQty;
+        let addedActualQty = actualQty;
+        let addedWorkdays = workdays;
+
+        if (isFormMonth && !hasSavedFormDate) {
+          if (filterDivision === "ALL") {
+            addedEqQty += formAggregates.totalEqQty;
+            addedActualQty += formAggregates.totalActualQty;
+            addedWorkdays += formWorkersCount;
+          } else if (filterDivision === "MLN") {
+            addedEqQty += formAggregates.totalEqQtyRO;
+            addedActualQty += formAggregates.totalActualQtyRO;
+            addedWorkdays += formWorkersCountRO;
+          } else if (filterDivision === "BG") {
+            addedEqQty += formAggregates.totalEqQtyBG;
+            addedActualQty += formAggregates.totalActualQtyBG;
+            addedWorkdays += formWorkersCountBG;
+          }
+        }
 
         if (addedEqQty > 0 || addedActualQty > 0 || addedWorkdays > 0) {
           const finalEq = addedEqQty;
@@ -1558,11 +1578,45 @@ export default function App() {
       } else {
 
         // Fallback to daily reports if available for this month (e.g. June 2026)
-        const monthReports = combinedDailyReports.filter((r) => getMonthFromDateString(r.date) === m.month);
-        if (monthReports.length > 0) {
-          const finalEq = monthReports.reduce((sum, r) => sum + (r.totalOutput || 0), 0);
-          const finalActual = monthReports.reduce((sum, r) => sum + (r.totalActualOutput || 0), 0);
-          const finalMandays = monthReports.reduce((sum, r) => sum + (r.totalCong || 0), 0);
+        const getValues = (item: any, gasRow: any) => {
+          let totalCong = 0;
+          let totalOutput = 0;
+          let totalActualOutput = 0;
+          
+          if (filterDivision === "ALL" || filterDivision === "MLN") {
+            const ratio = filterDivision === "ALL" ? 1 : 0.9;
+            totalCong += (item.congChinhThuc + item.congThoiVu) * ratio;
+            totalOutput += item.outputLineChinh * ratio;
+            totalActualOutput += item.actualLineChinh * ratio;
+          }
+          if (filterDivision === "ALL" || filterDivision === "RMA") {
+            if (filterDivision === "RMA") {
+               totalCong += (item.congChinhThuc + item.congThoiVu) * 0.1;
+               totalOutput += item.outputLineChinh * 0.1;
+               totalActualOutput += item.actualLineChinh * 0.1;
+            }
+          }
+          if (filterDivision === "ALL" || filterDivision === "BG") {
+            totalCong += gasRow.congGasStove + gasRow.congSeasonal + gasRow.congRma;
+            totalOutput += gasRow.outputStove + gasRow.outputRma;
+            totalActualOutput += gasRow.actualStove + gasRow.actualRma;
+          }
+          return { totalCong, totalOutput, totalActualOutput };
+        };
+
+        const assemMonthReports = assemblyDailyReports.filter((r) => !r.isSummary && getMonthFromDateString(r.date) === m.month && r.date.startsWith(m.year.toString()));
+        if (assemMonthReports.length > 0) {
+          let finalEq = 0;
+          let finalActual = 0;
+          let finalMandays = 0;
+
+          assemMonthReports.forEach(item => {
+             const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0, actualStove: 0, actualRma: 0 } as any;
+             const { totalCong, totalOutput, totalActualOutput } = getValues(item, gasRow);
+             finalEq += totalOutput;
+             finalActual += totalActualOutput;
+             finalMandays += totalCong;
+          });
 
           const calculatedProductivity = finalMandays > 0
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
@@ -1577,13 +1631,12 @@ export default function App() {
           };
         }
       }
-      }
       
       return m;
     });
 
     return updated;
-  }, [metrics2026, productionLogs, formDate, formAggregates, formWorkersCount, combinedDailyReports]);
+  }, [metrics2026, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, filterDivision, assemblyDailyReports, gasDailyReports]);
 
   // Lọc/chia tỉ lệ dữ liệu tĩnh dựa trên bộ lọc
   const displayWeeklyAttendance = useMemo(() => {
@@ -1913,14 +1966,50 @@ export default function App() {
         }
       } else {
         // Fallback to daily reports if available for this month
-        const monthReports = combinedDailyReports.filter((r) => getMonthFromDateString(r.date) === m.month);
-        if (monthReports.length > 0) {
-          const finalEq = monthReports.reduce((sum, r) => sum + (r.totalOutput || 0), 0);
-          const finalActual = monthReports.reduce((sum, r) => sum + (r.totalActualOutput || 0), 0);
-          const finalMandays = monthReports.reduce((sum, r) => sum + (r.totalCong || 0), 0);
+        const getValues = (item: any, gasRow: any) => {
+          let totalCong = 0;
+          let totalOutput = 0;
+          let totalActualOutput = 0;
+          
+          if (filterDivision === "ALL" || filterDivision === "MLN") {
+            const ratio = filterDivision === "ALL" ? 1 : 0.9;
+            totalCong += (item.congChinhThuc + item.congThoiVu) * ratio;
+            totalOutput += item.outputLineChinh * ratio;
+            totalActualOutput += item.actualLineChinh * ratio;
+          }
+          if (filterDivision === "ALL" || filterDivision === "RMA") {
+            if (filterDivision === "RMA") {
+               totalCong += (item.congChinhThuc + item.congThoiVu) * 0.1;
+               totalOutput += item.outputLineChinh * 0.1;
+               totalActualOutput += item.actualLineChinh * 0.1;
+            }
+          }
+          if (filterDivision === "ALL" || filterDivision === "BG") {
+            totalCong += gasRow.congGasStove + gasRow.congSeasonal + gasRow.congRma;
+            totalOutput += gasRow.outputStove + gasRow.outputRma;
+            totalActualOutput += gasRow.actualStove + gasRow.actualRma;
+          }
+          return { totalCong, totalOutput, totalActualOutput };
+        };
+
+        const assemMonthReports = assemblyDailyReports.filter((r) => !r.isSummary && getMonthFromDateString(r.date) === m.month && r.date.startsWith(m.year.toString()));
+        if (assemMonthReports.length > 0) {
+          let finalEq = 0;
+          let finalActual = 0;
+          let finalMandays = 0;
+
+          assemMonthReports.forEach(item => {
+             const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0, actualStove: 0, actualRma: 0 } as any;
+             const { totalCong, totalOutput, totalActualOutput } = getValues(item, gasRow);
+             finalEq += totalOutput;
+             finalActual += totalActualOutput;
+             finalMandays += totalCong;
+          });
+
           const calculatedProductivity = finalMandays > 0
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
             : (m.laborProductivityPercent || 100);
+
           return {
             ...m,
             equivalentProducts: finalEq,
@@ -1946,7 +2035,6 @@ export default function App() {
       }
       if (filterDivision === "ALL" || filterDivision === "RMA") {
         const ratio = filterDivision === "ALL" ? 0 : 0.1;
-        // In "ALL" mode, we don't double count, but in "RMA" mode we show the 10% portion
         if (filterDivision === "RMA") {
            totalCong += (item.congChinhThuc + item.congThoiVu) * 0.1;
            totalOutput += item.outputLineChinh * 0.1;
@@ -1960,52 +2048,49 @@ export default function App() {
       return { totalCong, totalOutput };
     };
 
+    // Chuẩn bị dữ liệu từ logs (từ tháng 7/2026 trở đi) cho các tính toán daily và weekly
+    const logsByDate: { [key: string]: { totalEq: number, mandays: number } } = {};
+    const filteredLogs = filterDivision === "ALL" ? productionLogs : productionLogs.filter(l => l.productGroup === filterDivision);
+    const workersByDateShiftLine: { [key: string]: number } = {};
+    
+    filteredLogs.forEach(log => {
+      if (!log.date.startsWith(selectedYear)) return;
+      if (!logsByDate[log.date]) logsByDate[log.date] = { totalEq: 0, mandays: 0 };
+      logsByDate[log.date].totalEq += log.equivalentProducts;
+      
+      const shiftKey = `${log.date}_${log.shift}_${log.lineId}`;
+      workersByDateShiftLine[shiftKey] = Math.max(workersByDateShiftLine[shiftKey] || 0, log.workersCount);
+    });
+    
+    Object.entries(workersByDateShiftLine).forEach(([key, workers]) => {
+      const date = key.split('_')[0];
+      if (logsByDate[date]) logsByDate[date].mandays += workers;
+    });
+
+    const isFormInLogs = filteredLogs.some(l => l.date === formDate);
+    if (!isFormInLogs && formDate && formDate.startsWith(selectedYear)) {
+      if (!logsByDate[formDate]) logsByDate[formDate] = { totalEq: 0, mandays: 0 };
+      if (filterDivision === "ALL") {
+        logsByDate[formDate].totalEq += formAggregates.totalEqQty;
+        logsByDate[formDate].mandays += formWorkersCount;
+      } else if (filterDivision === "MLN") {
+        logsByDate[formDate].totalEq += formAggregates.totalEqQtyRO;
+        logsByDate[formDate].mandays += formWorkersCountRO;
+      } else if (filterDivision === "BG") {
+        logsByDate[formDate].totalEq += formAggregates.totalEqQtyBG;
+        logsByDate[formDate].mandays += formWorkersCountBG;
+      }
+    }
+
     if (laborViewMode === "daily") {
       const historicalDaily = assemblyDailyReports
-        .filter((r) => !r.isSummary)
+        .filter((r) => !r.isSummary && r.date.startsWith(selectedYear))
         .map((item) => {
           const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
           const { totalCong, totalOutput } = getValues(item, gasRow);
           const value = totalCong > 0 ? Number(((totalOutput / totalCong) / 9.03 * 100).toFixed(1)) : 0;
-          return { name: item.date, value, rawDate: "" }; // rawDate for sorting not needed here
+          return { name: item.date, value, rawDate: "" };
         });
-
-      // Từ tháng 7 trở đi, lấy từ nhật ký ca (productionLogs) + form hiện tại
-      const logsByDate: { [key: string]: { totalEq: number, mandays: number } } = {};
-      const filteredLogs = filterDivision === "ALL" ? productionLogs : productionLogs.filter(l => l.productGroup === filterDivision);
-      
-      // Tách nhân sự theo ca để tính công (tránh đếm trùng)
-      const workersByDateShiftLine: { [key: string]: number } = {};
-      
-      filteredLogs.forEach(log => {
-        if (!logsByDate[log.date]) logsByDate[log.date] = { totalEq: 0, mandays: 0 };
-        logsByDate[log.date].totalEq += log.equivalentProducts;
-        
-        const shiftKey = `${log.date}_${log.shift}_${log.lineId}`;
-        workersByDateShiftLine[shiftKey] = Math.max(workersByDateShiftLine[shiftKey] || 0, log.workersCount);
-      });
-      
-      // Gộp công lại theo ngày
-      Object.entries(workersByDateShiftLine).forEach(([key, workers]) => {
-        const date = key.split('_')[0];
-        if (logsByDate[date]) logsByDate[date].mandays += workers;
-      });
-
-      // Thêm form hiện tại nếu chưa được lưu
-      const isFormInLogs = filteredLogs.some(l => l.date === formDate);
-      if (!isFormInLogs && formDate) {
-        if (!logsByDate[formDate]) logsByDate[formDate] = { totalEq: 0, mandays: 0 };
-        if (filterDivision === "ALL") {
-          logsByDate[formDate].totalEq += formAggregates.totalEqQty;
-          logsByDate[formDate].mandays += formWorkersCount;
-        } else if (filterDivision === "MLN") {
-          logsByDate[formDate].totalEq += formAggregates.totalEqQtyRO;
-          logsByDate[formDate].mandays += formWorkersCountRO;
-        } else if (filterDivision === "BG") {
-          logsByDate[formDate].totalEq += formAggregates.totalEqQtyBG;
-          logsByDate[formDate].mandays += formWorkersCountBG;
-        }
-      }
 
       const newDaily = Object.entries(logsByDate).map(([date, data]) => {
          const value = data.mandays > 0 ? Number(((data.totalEq / data.mandays) / 9.03 * 100).toFixed(1)) : 0;
@@ -2021,19 +2106,42 @@ export default function App() {
     }
 
     if (laborViewMode === "weekly") {
-      const historicalWeekly = assemblyDailyReports
-        .filter((r) => r.isSummary && r.date.includes("W"))
-        .map((item) => {
-          const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
-          const { totalCong, totalOutput } = getValues(item, gasRow);
-          const value = totalCong > 0 ? Number(((totalOutput / totalCong) / 9.03 * 100).toFixed(1)) : 0;
-          return { name: item.date, value };
-        });
-        
-      // For weekly from logs, it's complex to determine W number properly, so we skip or approximate if needed.
-      // To keep it simple and fulfill the requirement, we will focus on Daily/Monthly/Yearly. 
-      // If we must implement weekly, we can group newDaily by week.
-      return historicalWeekly; 
+      let historicalWeekly: any[] = [];
+      if (selectedYear === "2025") {
+         historicalWeekly = assemblyDailyReports
+          .filter((r) => r.isSummary && r.date.includes("W"))
+          .map((item) => {
+            const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
+            const { totalCong, totalOutput } = getValues(item, gasRow);
+            const value = totalCong > 0 ? Number(((totalOutput / totalCong) / 9.03 * 100).toFixed(1)) : 0;
+            return { name: item.date, value };
+          });
+      }
+
+      // Group new daily logs into weeks
+      const getWeekNo = (dStr: string) => {
+        const d = new Date(dStr);
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1)/7);
+      };
+
+      const weeklyData: { [key: string]: { totalEq: number, mandays: number } } = {};
+      Object.entries(logsByDate).forEach(([date, data]) => {
+        const weekNo = getWeekNo(date);
+        const weekKey = `Tuần ${weekNo}`;
+        if (!weeklyData[weekKey]) weeklyData[weekKey] = { totalEq: 0, mandays: 0 };
+        weeklyData[weekKey].totalEq += data.totalEq;
+        weeklyData[weekKey].mandays += data.mandays;
+      });
+
+      const newWeekly = Object.entries(weeklyData).map(([week, data]) => {
+        const value = data.mandays > 0 ? Number(((data.totalEq / data.mandays) / 9.03 * 100).toFixed(1)) : 0;
+        return { name: week, value, rawWeek: parseInt(week.replace("Tuần ", "")) };
+      });
+      newWeekly.sort((a, b) => a.rawWeek - b.rawWeek);
+
+      return [...historicalWeekly, ...newWeekly.map(w => ({ name: w.name, value: w.value }))];
     }
 
     if (laborViewMode === "monthly") {
@@ -2044,14 +2152,71 @@ export default function App() {
     }
 
     // Yearly
-    const activeMonths = displayMetrics.filter((m) => m.laborProductivityPercent !== null);
-    if (activeMonths.length === 0) return [{ name: `Năm ${selectedYear}`, value: 0 }];
+    const currentMonthNum = parseInt(formDate.split("-")[1], 10);
+
+    const getYearlyValue2025 = () => {
+      let totalCong = 0;
+      let totalOutput = 0;
+      
+      const reports = assemblyDailyReports.filter((r) => {
+        if (r.isSummary || !r.date.startsWith("2025")) return false;
+        const monthNum = parseInt(r.date.split("-")[1], 10);
+        return monthNum <= currentMonthNum;
+      });
+      
+      reports.forEach(item => {
+         const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
+         
+         if (filterDivision === "ALL" || filterDivision === "MLN") {
+            const ratio = filterDivision === "ALL" ? 1 : 0.9;
+            totalCong += (item.congChinhThuc + item.congThoiVu) * ratio;
+            totalOutput += item.outputLineChinh * ratio;
+         }
+         if (filterDivision === "RMA") {
+            totalCong += (item.congChinhThuc + item.congThoiVu) * 0.1;
+            totalOutput += item.outputLineChinh * 0.1;
+         }
+         if (filterDivision === "ALL" || filterDivision === "BG") {
+            totalCong += gasRow.congGasStove + gasRow.congSeasonal + gasRow.congRma;
+            totalOutput += gasRow.outputStove + gasRow.outputRma;
+         }
+      });
+      
+      if (totalCong > 0) {
+        return Number(((totalOutput / totalCong) / 9.03 * 100).toFixed(1));
+      }
+      
+      // Fallback
+      const active = metrics2025.filter(m => m.laborProductivityPercent !== null && m.month <= currentMonthNum);
+      if (active.length === 0) return 0;
+      let sumEq = 0; let sumMan = 0;
+      active.forEach(m => { sumEq += m.equivalentProducts || 0; sumMan += m.productionMandays || 0; });
+      if (sumMan === 0) return 0;
+      return Number(((sumEq / sumMan) / 9.03 * 100).toFixed(1));
+    };
+
+    const getYearlyValue2026 = () => {
+      const activeMonths = processedMetrics2026.filter((m) => m.laborProductivityPercent !== null && m.month <= currentMonthNum);
+      if (activeMonths.length === 0) return 0;
+      
+      let totalEq = 0;
+      let totalMandays = 0;
+      
+      activeMonths.forEach(m => {
+        totalEq += (m.equivalentProducts || 0);
+        totalMandays += (m.productionMandays || 0);
+      });
+      
+      if (totalMandays === 0) return 0;
+      return Number(((totalEq / totalMandays) / 9.03 * 100).toFixed(1));
+    };
+
+    return [
+      { name: `Năm 2025 (đến T${currentMonthNum})`, value: getYearlyValue2025() },
+      { name: `Năm 2026 (đến T${currentMonthNum})`, value: getYearlyValue2026() }
+    ];
     
-    // Average productivity across active months
-    const avg = activeMonths.reduce((sum, m) => sum + (m.laborProductivityPercent || 0), 0) / activeMonths.length;
-    return [{ name: `Năm ${selectedYear}`, value: Number(avg.toFixed(1)) }];
-    
-  }, [assemblyDailyReports, gasDailyReports, laborViewMode, filterDivision, displayMetrics, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, selectedYear]);
+  }, [assemblyDailyReports, gasDailyReports, laborViewMode, filterDivision, displayMetrics, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, selectedYear, metrics2025, processedMetrics2026]);
 
   const totalMonthlyPlanUnits = useMemo(() => {
     const [year, month] = formDate.split("-");
@@ -4746,15 +4911,16 @@ export default function App() {
                   <ResponsiveContainer width="99%" height="100%">
                     <BarChart data={nsldComparisonData} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={13} fontWeight="medium" />
+                    <YAxis stroke="#64748b" fontSize={13} tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
+                      contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc", fontSize: "14px", fontWeight: "bold" }}
+                      itemStyle={{ fontSize: "14px" }}
                       formatter={(value: number) => [`${value}%`, "NSLĐ"]}
                     />
-                    <Legend />
+                    <Legend wrapperStyle={{ fontSize: "14px", fontWeight: "medium" }} />
                     <Bar isAnimationActive={false} dataKey="value" name="NSLĐ (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="value" position="top" offset={3} fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                      <LabelList dataKey="value" position="top" offset={5} fill="#10b981" fontSize={13} fontWeight="bold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
                     </Bar>
                   </BarChart>
                   </ResponsiveContainer>
