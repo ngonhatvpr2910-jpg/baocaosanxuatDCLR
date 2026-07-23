@@ -1729,14 +1729,23 @@ export default function App() {
       }
     });
 
-    return monthlyScrap.map((m, i) => {
-      let scrapCost = m.scrapCost;
+    let runningSum = 0;
+    return Array.from({ length: 12 }).map((_, i) => {
+      const existing = monthlyScrap.find(m => m.month === i + 1);
+      let scrapCost = existing ? existing.scrapCost : null;
       if (computedFromWeeks[i] !== null) {
         scrapCost = computedFromWeeks[i];
       }
+      
+      if (scrapCost !== null) {
+        runningSum += scrapCost;
+      }
+      
+      const valToReturn = (scrapCost === null && runningSum === 0) ? null : runningSum;
+
       return {
-        ...m,
-        scrapCost: scrapCost === null ? null : Math.round(scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+        month: i + 1,
+        scrapCost: valToReturn === null ? null : Math.round(valToReturn * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
       };
     });
   }, [filterDivision, monthlyScrap, weeklyScrap]);
@@ -1755,15 +1764,27 @@ export default function App() {
       }
     });
 
-    return monthlyDclrError.map((m, i) => {
-      let errorRate = m.errorRate;
+    let runningTotalSum = 0;
+    let runningTotalCount = 0;
+
+    return Array.from({ length: 12 }).map((_, i) => {
+      const existing = monthlyDclrError.find(m => m.month === i + 1);
+      let errorRate = existing ? existing.errorRate : null;
+      
       if (computedFromWeeksCount[i] > 0) {
         errorRate = Number((computedFromWeeksSum[i] / computedFromWeeksCount[i]).toFixed(2));
       }
+
+      if (errorRate !== null) {
+        runningTotalSum += errorRate;
+        runningTotalCount += 1;
+      }
+
+      let cumulativeRate = (runningTotalCount > 0) ? Number((runningTotalSum / runningTotalCount).toFixed(2)) : null;
       
       return {
-        ...m,
-        errorRate: errorRate === null ? null : Number((errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+        month: i + 1,
+        errorRate: cumulativeRate === null ? null : Number((cumulativeRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
       };
     });
   }, [filterDivision, monthlyDclrError, weeklyDclrError]);
@@ -4758,7 +4779,7 @@ export default function App() {
                         <div className="mt-2 text-xs flex items-center justify-between">
                           <span className="text-slate-400">Tỉ lệ hoàn thành</span>
                           <span className="font-mono font-bold text-emerald-400">
-                              {kpis.plannedRevenue > 0 ? Math.round((kpis.actualRevenue / kpis.plannedRevenue) * 100) : 0}%
+                              {kpis.plannedRevenue > 0 ? (Math.round((kpis.actualRevenue / kpis.plannedRevenue) * 100) || 0) : 0}%
                           </span>
                         </div>
                         <div className="mt-3 pt-2 border-t border-slate-800/50 flex justify-end">
@@ -4919,7 +4940,7 @@ export default function App() {
                   <ResponsiveContainer width="99%" height="100%">
                     <ComposedChart data={displayMetrics} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickFormatter={(v) => `Tháng ${v}`} />
+                    <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickFormatter={(v) => `Tháng ${v}`} interval={0} />
                     <YAxis yAxisId="left" stroke="#64748b" fontSize={11} domain={YAXIS_DOMAIN} />
                     <YAxis yAxisId="right" orientation="right" stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} />
                     <Tooltip
@@ -5103,21 +5124,21 @@ export default function App() {
                       <p className="text-xs text-slate-400">Thống kê giá trị tổn hao hàng hỏng của dây chuyền bám sát sổ sách theo từng tháng</p>
                     </div>
                     <span className="px-2.5 py-1 bg-rose-950 text-rose-450 text-[10px] font-mono border border-rose-800 rounded">
-                      Month 1 - Month 6 Metric
+                      Accumulated Monthly Metric
                     </span>
                   </div>
                   <div className="h-[380px]">
                     <ResponsiveContainer width="99%" height="100%">
                       <BarChart data={chartMonthlyScrap} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" />
-                        <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
+                        <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" interval={0} />
+                        <YAxis tickFormatter={(v) => v ? `${(v / 1000000).toFixed(1)}M` : ''} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
                         <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={35}>
-                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${(v / 1000000).toFixed(1)}M`} />
+                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -5139,14 +5160,14 @@ export default function App() {
                     <ResponsiveContainer width="99%" height="100%">
                       <BarChart data={chartWeeklyScrap} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="week" fontSize={11} stroke="#64748b" />
-                        <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
+                        <XAxis dataKey="week" fontSize={11} stroke="#64748b" interval={0} />
+                        <YAxis tickFormatter={(v) => v ? `${(v / 1000000).toFixed(1)}M` : ''} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
                         <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={18}>
-                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => `${(v / 1000000).toFixed(1)}M`} />
+                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -5161,7 +5182,7 @@ export default function App() {
                     <ResponsiveContainer width="99%" height="100%">
                       <LineChart data={displayMonthlyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" />
+                        <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" interval={0} />
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
                         <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
@@ -5178,7 +5199,7 @@ export default function App() {
                     <ResponsiveContainer width="99%" height="100%">
                       <LineChart data={chartWeeklyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="week" fontSize={11} stroke="#64748b" />
+                        <XAxis dataKey="week" fontSize={11} stroke="#64748b" interval={0} />
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
                         <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
@@ -5308,7 +5329,7 @@ export default function App() {
                     {chartTimeDimension === "monthly" ? (
                       <BarChart data={monthlyComparisonChartData} margin={{ top: 40, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="month" stroke="#64748b" fontSize={11} />
+                        <XAxis dataKey="month" stroke="#64748b" fontSize={11} interval={0} />
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(val) => `${val}%`} stroke="#64748b" fontSize={11} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155", color: "#f8fafc" }}
@@ -6752,7 +6773,7 @@ export default function App() {
                       transition={{ duration: 0.15 }}
                       className="space-y-4"
                     >
-                      <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+                      <div className="overflow-x-auto overflow-y-auto">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
                             <tr className="bg-slate-900/60 border-b border-slate-800 text-slate-400 font-mono text-[10px]">
@@ -6928,7 +6949,7 @@ export default function App() {
                       </div>
 
                       {/* MATRIX HOURLY TABLE */}
-                      <div className="overflow-x-auto max-h-[350px] overflow-y-auto border border-slate-850/60 rounded-lg">
+                      <div className="overflow-x-auto overflow-y-auto border border-slate-850/60 rounded-lg">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
                             <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-mono text-[9px] uppercase sticky top-0 backdrop-blur">
@@ -7052,7 +7073,7 @@ export default function App() {
                       transition={{ duration: 0.15 }}
                       className="space-y-4"
                     >
-                      <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-850 rounded-lg">
+                      <div className="overflow-x-auto overflow-y-auto border border-slate-850 rounded-lg">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
                             <tr className="bg-slate-900 border-b border-slate-700 text-slate-300 font-black text-xs uppercase tracking-wider sticky top-0 backdrop-blur shadow-sm">
@@ -7216,7 +7237,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-800 rounded-lg max-h-[600px] overflow-y-auto relative">
+                <div className="overflow-x-auto border border-slate-800 rounded-lg overflow-y-auto relative">
                   <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
                     <thead>
                       <tr className="bg-slate-900 text-slate-300 uppercase font-mono text-[10px] tracking-wider">
@@ -7452,7 +7473,7 @@ export default function App() {
                 </div>
 
                 {/* Grid Table */}
-                <div className="overflow-x-auto border border-slate-850 rounded-lg max-h-[500px] overflow-y-auto">
+                <div className="overflow-x-auto border border-slate-850 rounded-lg overflow-y-auto">
                   <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
                     <thead>
                       <tr className="bg-slate-900 text-slate-300 uppercase font-mono text-[10px] tracking-wider border-b border-slate-800 sticky top-0 z-20">
@@ -7986,7 +8007,7 @@ export default function App() {
 
               {/* Main Table Container */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xl">
-                <div className="overflow-x-auto overflow-y-auto max-h-[700px] scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                <div className="overflow-x-auto overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                   <table className="w-full text-[11px] border-collapse min-w-[1200px] bg-white text-black">
                     <thead className="sticky top-0 z-20 bg-slate-50 shadow-md">
                       {/* Top Header Row */}
@@ -8601,7 +8622,7 @@ export default function App() {
                       <ResponsiveContainer width="99%" height="100%">
                         <ComposedChart data={simulatedHistoryMetrics} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                          <XAxis dataKey="month" fontSize={11} stroke="#64748b" />
+                          <XAxis dataKey="month" fontSize={11} stroke="#64748b" interval={0} />
                           <YAxis tickFormatter={(v) => `${v}%`} domain={YAXIS_DOMAIN} fontSize={11} stroke="#64748b" />
                           <Tooltip
                             contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
