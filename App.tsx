@@ -1729,7 +1729,6 @@ export default function App() {
       }
     });
 
-    let runningSum = 0;
     return Array.from({ length: 12 }).map((_, i) => {
       const existing = monthlyScrap.find(m => m.month === i + 1);
       let scrapCost = existing ? existing.scrapCost : null;
@@ -1737,15 +1736,9 @@ export default function App() {
         scrapCost = computedFromWeeks[i];
       }
       
-      if (scrapCost !== null) {
-        runningSum += scrapCost;
-      }
-      
-      const valToReturn = (scrapCost === null && runningSum === 0) ? null : runningSum;
-
       return {
         month: i + 1,
-        scrapCost: valToReturn === null ? null : Math.round(valToReturn * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+        scrapCost: scrapCost === null ? null : Math.round(scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
       };
     });
   }, [filterDivision, monthlyScrap, weeklyScrap]);
@@ -1764,9 +1757,6 @@ export default function App() {
       }
     });
 
-    let runningTotalSum = 0;
-    let runningTotalCount = 0;
-
     return Array.from({ length: 12 }).map((_, i) => {
       const existing = monthlyDclrError.find(m => m.month === i + 1);
       let errorRate = existing ? existing.errorRate : null;
@@ -1775,16 +1765,9 @@ export default function App() {
         errorRate = Number((computedFromWeeksSum[i] / computedFromWeeksCount[i]).toFixed(2));
       }
 
-      if (errorRate !== null) {
-        runningTotalSum += errorRate;
-        runningTotalCount += 1;
-      }
-
-      let cumulativeRate = (runningTotalCount > 0) ? Number((runningTotalSum / runningTotalCount).toFixed(2)) : null;
-      
       return {
         month: i + 1,
-        errorRate: cumulativeRate === null ? null : Number((cumulativeRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+        errorRate: errorRate === null ? null : Number((errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
       };
     });
   }, [filterDivision, monthlyDclrError, weeklyDclrError]);
@@ -3123,7 +3106,7 @@ export default function App() {
     });
 
     setProductionLogs((prev) => {
-      const filtered = prev.filter((log) => log.date !== formDate);
+      const filtered = prev.filter((log) => log.date !== formDate || log.shift !== formShift);
       return [...newLogs, ...filtered];
     });
 
@@ -3164,13 +3147,13 @@ export default function App() {
     }, 3500);
   };
 
-  const handleEditLog = (date: string) => {
-    const logsForDate = productionLogs.filter(l => l.date === date);
+  const handleEditLog = (date: string, shift: string) => {
+    const logsForDate = productionLogs.filter(l => l.date === date && l.shift === shift);
     if (logsForDate.length === 0) return;
 
     const firstLog = logsForDate[0];
     setFormDate(date);
-    setFormShift(firstLog.shift);
+    setFormShift(firstLog.shift as any);
     setFormTechnician(firstLog.technicianName);
 
     // Thu thập tất cả các slots được sử dụng
@@ -5124,7 +5107,7 @@ export default function App() {
                       <p className="text-xs text-slate-400">Thống kê giá trị tổn hao hàng hỏng của dây chuyền bám sát sổ sách theo từng tháng</p>
                     </div>
                     <span className="px-2.5 py-1 bg-rose-950 text-rose-450 text-[10px] font-mono border border-rose-800 rounded">
-                      Accumulated Monthly Metric
+                      Monthly Scrap Metric
                     </span>
                   </div>
                   <div className="h-[380px]">
@@ -6255,7 +6238,7 @@ export default function App() {
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{formAggregates.avgProductivityRO}%</td>
+                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{(formAggregates.avgProductivityRO || 0).toFixed(1)}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -6294,7 +6277,7 @@ export default function App() {
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{formAggregates.avgProductivityRMA}%</td>
+                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{(formAggregates.avgProductivityRMA || 0).toFixed(1)}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -6326,7 +6309,7 @@ export default function App() {
                                   </td>
                                 )
                               })}
-                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{formAggregates.avgProductivityBG}%</td>
+                              <td className="py-1 px-1 border-r border-slate-700 font-bold">{(formAggregates.avgProductivityBG || 0).toFixed(1)}%</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                               <td></td>
@@ -6356,7 +6339,7 @@ export default function App() {
                                   </td>
                                 )
                               })}
-                              <td className="py-2 px-1 border-r border-slate-600">{formAggregates.avgProductivity}%</td>
+                              <td className="py-2 px-1 border-r border-slate-600">{(formAggregates.avgProductivity || 0).toFixed(1)}%</td>
                               <td className="py-2 px-1 border-r border-slate-600 text-slate-300">-</td>
                               <td className="py-2 px-1 border-r border-slate-600 text-slate-300">-</td>
                               <td className="bg-slate-700/80"></td>
@@ -6844,7 +6827,7 @@ export default function App() {
                                   <td className="py-3 px-3 text-center">
                                     <div className="flex items-center justify-center gap-1">
                                       <button
-                                        onClick={() => handleEditLog(log.date)}
+                                        onClick={() => handleEditLog(log.date, log.shift)}
                                         className="p-1 text-slate-400 hover:text-cyan-500 rounded hover:bg-cyan-950 bg-transparent border border-transparent transition cursor-pointer"
                                         title="Chỉnh sửa nhật ký này"
                                       >
@@ -7010,40 +6993,40 @@ export default function App() {
                                       </div>
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h08_09 !== null ? h08_09 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h08_09 !== null && !Number.isNaN(h08_09) ? h08_09 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h09_10 !== null ? h09_10 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h09_10 !== null && !Number.isNaN(h09_10) ? h09_10 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h10_11 !== null ? h10_11 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h10_11 !== null && !Number.isNaN(h10_11) ? h10_11 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h11_12 !== null ? h11_12 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h11_12 !== null && !Number.isNaN(h11_12) ? h11_12 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h13_14 !== null ? h13_14 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h13_14 !== null && !Number.isNaN(h13_14) ? h13_14 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h14_15 !== null ? h14_15 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h14_15 !== null && !Number.isNaN(h14_15) ? h14_15 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h15_16 !== null ? h15_16 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h15_16 !== null && !Number.isNaN(h15_16) ? h15_16 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h16_17 !== null ? h16_17 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h16_17 !== null && !Number.isNaN(h16_17) ? h16_17 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h17_18 !== null ? h17_18 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h17_18 !== null && !Number.isNaN(h17_18) ? h17_18 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h18_19 !== null ? h18_19 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h18_19 !== null && !Number.isNaN(h18_19) ? h18_19 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
-                                      {h19_20 !== null ? h19_20 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
+                                      {h19_20 !== null && !Number.isNaN(h19_20) ? h19_20 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-2 text-right font-bold text-white text-[11px]">
-                                      {log.actualUnits}
+                                      {(!log.actualUnits || Number.isNaN(log.actualUnits)) ? 0 : log.actualUnits}
                                     </td>
                                     <td className="py-2.5 px-2.5 text-center">
                                       <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
