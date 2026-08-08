@@ -1,4 +1,6 @@
-
+const fs = require('fs');
+let code = fs.readFileSync('main.tsx', 'utf8');
+const patch = `
 const originalConsoleError = console.error;
 console.error = (...args) => {
   if (args[0] && typeof args[0] === 'string' && args[0].includes('Received NaN')) {
@@ -6,13 +8,6 @@ console.error = (...args) => {
   }
   originalConsoleError(...args);
 };
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+`;
+code = patch + code;
+fs.writeFileSync('main.tsx', code);

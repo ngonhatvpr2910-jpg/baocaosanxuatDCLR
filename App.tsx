@@ -109,6 +109,33 @@ export interface YearWeek {
   label: string;
 }
 
+
+
+// Function to calculate ISO-like weeks but shifted to Friday-Thursday
+export function getFridayToThursdayWeeksForMonth(year: number, month: number): string[] {
+  let w1Start = new Date(year, 0, 1);
+  while (w1Start.getDay() !== 5) {
+    w1Start.setDate(w1Start.getDate() - 1);
+  }
+  
+  let weeks: string[] = [];
+  for (let i = 1; i <= 53; i++) {
+    let weekStart = new Date(w1Start);
+    weekStart.setDate(w1Start.getDate() + (i - 1) * 7);
+    let weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    
+    let mStart = new Date(year, month - 1, 1);
+    let mEnd = new Date(year, month, 0); // Last day of month
+    
+    // Check overlap
+    if (weekStart <= mEnd && weekEnd >= mStart) {
+      weeks.push("W" + i);
+    }
+  }
+  return weeks;
+}
+
 export function getStandardYearWeeks(year: number): YearWeek[] {
   const weeks: YearWeek[] = [];
   let currentWeekDays: { dateStr: string; dayNum: number; monthNum: number }[] = [];
@@ -331,6 +358,7 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState("");
   const [revenuePasswordError, setRevenuePasswordError] = useState("");
   const [dashboardSubTab, setDashboardSubTab] = useState<"standard" | "scrap-quality" | "charts">("standard");
+  const [scrapQualityMonth, setScrapQualityMonth] = useState<number>(new Date().getMonth() + 1);
   const [chartTimeDimension, setChartTimeDimension] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
   const [historyYear, setHistoryYear] = useState<2025 | 2026>(2025);
   const [focusedField, setFocusedField] = useState<{ month: number; year: number; field: string } | null>(null);
@@ -393,35 +421,37 @@ export default function App() {
     }));
   };
 
-  const updateScrapMetric = (type: "monthly" | "weekly", index: number, value: string) => {
+  const updateScrapMetric = (type: "monthly" | "weekly", identifier: number | string, value: string) => {
     const numericValue = value === "" ? null : Number(value);
     if (type === "monthly") {
       setMonthlyScrap(prev => {
         const next = [...prev];
-        next[index] = { ...next[index], scrapCost: numericValue };
+        next[identifier as number] = { ...next[identifier as number], scrapCost: numericValue };
         return next;
       });
     } else {
       setWeeklyScrap(prev => {
         const next = [...prev];
-        next[index] = { ...next[index], scrapCost: numericValue };
+        const idx = next.findIndex(w => w.week === identifier);
+        if (idx !== -1) next[idx] = { ...next[idx], scrapCost: numericValue };
         return next;
       });
     }
   };
 
-  const updateDclrErrorMetric = (type: "monthly" | "weekly", index: number, value: string) => {
+  const updateDclrErrorMetric = (type: "monthly" | "weekly", identifier: number | string, value: string) => {
     const numericValue = value === "" ? null : Number(value);
     if (type === "monthly") {
       setMonthlyDclrError(prev => {
         const next = [...prev];
-        next[index] = { ...next[index], errorRate: numericValue };
+        next[identifier as number] = { ...next[identifier as number], errorRate: numericValue };
         return next;
       });
     } else {
       setWeeklyDclrError(prev => {
         const next = [...prev];
-        next[index] = { ...next[index], errorRate: numericValue };
+        const idx = next.findIndex(w => w.week === identifier);
+        if (idx !== -1) next[idx] = { ...next[idx], errorRate: numericValue };
         return next;
       });
     }
@@ -453,20 +483,31 @@ export default function App() {
 
   const [weeklyScrap, setWeeklyScrap] = useState<WeeklyScrapReport[]>(() => {
     const saved = localStorage.getItem("sunhouse_weekly_scrap_v2");
-    if (saved) return JSON.parse(saved);
-    const initial = JSON.parse(JSON.stringify(WEEKLY_SCRAP_REPORT)) as WeeklyScrapReport[];
-    initial[0].scrapCost = 1820000;
-    initial[1].scrapCost = 2150000;
-    initial[2].scrapCost = 1480000;
-    initial[3].scrapCost = 3420000;
-    initial[4].scrapCost = 2900000;
-    initial[5].scrapCost = 1120000;
-    return initial;
+    let arr = saved ? JSON.parse(saved) : [];
+    let full = Array.from({ length: 53 }).map((_, i) => ({ week: "W" + (1 + i), scrapCost: null }));
+    arr.forEach(a => {
+      const idx = full.findIndex(f => f.week === a.week);
+      if (idx !== -1) full[idx].scrapCost = a.scrapCost;
+    });
+    if (!saved) {
+      const d = [1820000, 2150000, 1480000, 3420000, 2900000, 1120000];
+      d.forEach((v, i) => {
+        const idx = full.findIndex(f => f.week === "W" + (23 + i));
+        if (idx !== -1) full[idx].scrapCost = v;
+      });
+    }
+    return full;
   });
 
   const [weeklyDclrError, setWeeklyDclrError] = useState<WeeklyDclreErrorRate[]>(() => {
     const saved = localStorage.getItem("sunhouse_weekly_dclr_error_v2");
-    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(WEEKLY_DCLR_ERROR_RATE));
+    let arr = saved ? JSON.parse(saved) : [];
+    let full = Array.from({ length: 53 }).map((_, i) => ({ week: "W" + (1 + i), errorRate: null }));
+    arr.forEach(a => {
+      const idx = full.findIndex(f => f.week === a.week);
+      if (idx !== -1) full[idx].errorRate = a.errorRate;
+    });
+    return full;
   });
 
   const [monthlyDclrError, setMonthlyDclrError] = useState<MonthlyDclreErrorRate[]>(() => {
@@ -1561,6 +1602,14 @@ export default function App() {
     };
 
     const updated = baseMetrics.map((m) => {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const isPast = m.year < currentYear || (m.year === currentYear && m.month < currentMonth);
+      const isCurrent = m.year === currentYear && m.month === currentMonth;
+      const isLocked = (isPast || isCurrent) && !(m.year === 2026 && m.month === 7);
+      const isAutoReportMonth = isLocked;
+
       // Get logs for this month
       const logsForMonth = productionLogs.filter(
         (log) => log.date.startsWith(`${m.year}-${String(m.month).padStart(2, '0')}`)
@@ -1569,7 +1618,7 @@ export default function App() {
       const isFormMonth = m.year === formYear && m.month === formMonth;
       const hasLogs = logsForMonth.length > 0;
 
-      if (hasLogs || isFormMonth) {
+      if (isAutoReportMonth && (hasLogs || isFormMonth)) {
         const filteredLogs = hasSavedFormDate
           ? logsForMonth
           : logsForMonth.filter((log) => log.date !== formDate);
@@ -1775,22 +1824,59 @@ export default function App() {
 
 
   const displayWeeklyScrap = useMemo(() => {
-    return weeklyScrap.map(r => ({
-      ...r,
-      scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
-    }));
-  }, [filterDivision, weeklyScrap]);
+    const validWeeks = getFridayToThursdayWeeksForMonth(selectedYear, scrapQualityMonth);
+    return weeklyScrap
+      .filter(r => validWeeks.includes(r.week))
+      .map(r => ({
+        ...r,
+        scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+      }));
+  }, [filterDivision, weeklyScrap, selectedYear, scrapQualityMonth]);
 
   const displayWeeklyDclrError = useMemo(() => {
-    return weeklyDclrError.map(r => ({
-      ...r,
-      errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
-    }));
-  }, [filterDivision, weeklyDclrError]);
+    const validWeeks = getFridayToThursdayWeeksForMonth(selectedYear, scrapQualityMonth);
+    return weeklyDclrError
+      .filter(r => validWeeks.includes(r.week))
+      .map(r => ({
+        ...r,
+        errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+      }));
+  }, [filterDivision, weeklyDclrError, selectedYear, scrapQualityMonth]);
 
-  const chartMonthlyScrap = useMemo(() => displayMonthlyScrap.filter(r => r.scrapCost !== null), [displayMonthlyScrap]);
-  const chartWeeklyScrap = useMemo(() => displayWeeklyScrap.filter(r => r.scrapCost !== null), [displayWeeklyScrap]);
-  const chartWeeklyDclrError = useMemo(() => displayWeeklyDclrError.filter(e => e.errorRate !== null), [displayWeeklyDclrError]);
+  const chartValidWeeks = useMemo(() => {
+    const valid = getFridayToThursdayWeeksForMonth(selectedYear, scrapQualityMonth);
+    if (valid.length === 0) return [];
+    const firstWeekStr = valid[0];
+    const firstWeekNum = parseInt(firstWeekStr.replace("W", ""), 10);
+    const pastWeeks = [];
+    if (firstWeekNum > 2) {
+      pastWeeks.push("W" + (firstWeekNum - 2));
+      pastWeeks.push("W" + (firstWeekNum - 1));
+    } else if (firstWeekNum > 1) {
+      pastWeeks.push("W" + (firstWeekNum - 1));
+    }
+    return [...pastWeeks, ...valid];
+  }, [selectedYear, scrapQualityMonth]);
+
+  const chartMonthlyScrap = useMemo(() => displayMonthlyScrap, [displayMonthlyScrap]);
+  
+  const chartWeeklyScrap = useMemo(() => {
+    return weeklyScrap
+      .filter(r => chartValidWeeks.includes(r.week))
+      .map(r => ({
+        ...r,
+        scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+      }));
+  }, [filterDivision, weeklyScrap, chartValidWeeks]);
+
+  const chartWeeklyDclrError = useMemo(() => {
+    return weeklyDclrError
+      .filter(r => chartValidWeeks.includes(r.week))
+      .map(r => ({
+        ...r,
+        errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+      }));
+  }, [filterDivision, weeklyDclrError, chartValidWeeks]);
 
   const weeklyReportData = useMemo(() => {
     const weeks = getStandardYearWeeks(selectedYear);
@@ -1935,9 +2021,9 @@ export default function App() {
   };
 
   const displayMetrics = useMemo(() => {
-    const baseMetrics = selectedYear === 2025 ? metrics2025 : processedMetrics2026;
+    const baseMetrics = historyYear === 2025 ? metrics2025 : processedMetrics2026;
 
-    if (selectedYear === 2026) {
+    if (historyYear === 2026) {
       // processedMetrics2026 already handles logs and filterDivision internally
       return baseMetrics;
     }
@@ -4562,7 +4648,7 @@ export default function App() {
                   id="year-2025"
                   onClick={() => setSelectedYear(2025)}
                   className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    selectedYear === 2025 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                    historyYear === 2025 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
                   }`}
                 >
                   2025
@@ -4571,7 +4657,7 @@ export default function App() {
                   id="year-2026"
                   onClick={() => setSelectedYear(2026)}
                   className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    selectedYear === 2026 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                    historyYear === 2026 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
                   }`}
                 >
                   2026
@@ -5014,7 +5100,7 @@ export default function App() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleEditLog(log.date);
+                                handleEditLog(log.date, log.shift);
                               }}
                               className="text-slate-500 hover:text-cyan-400 p-0.5 rounded"
                               title="Chỉnh sửa nhật ký này"
@@ -5197,10 +5283,27 @@ export default function App() {
               {/* CHÍNH XÁC CÁC BẢNG TRÌNH BÀY SÁT BẢNG EXCEL TRONG ẢNH */}
               <div className="bg-slate-900/30 rounded-xl border border-slate-800/60 p-5 space-y-6">
                 <div>
-                  <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Database className="w-4 h-4 text-rose-500" />
-                    Hồ Sơ Danh Mục Lỗi Sản Lượng
-                  </h4>
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Database className="w-4 h-4 text-rose-500" />
+                      Hồ Sơ Danh Mục Lỗi Sản Lượng
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-400">Tháng:</label>
+                      <select 
+                        value={scrapQualityMonth}
+                        onChange={(e) => setScrapQualityMonth(Number(e.target.value))}
+                        className="bg-slate-950 text-white text-xs border border-slate-700 rounded px-2 py-1 outline-none"
+                      >
+                        {Array.from({ length: 12 }).map((_, i) => (
+                          <option key={i+1} value={i+1}>Tháng {i+1}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1 italic">
+                    * Lưu ý: Dữ liệu tuần ở 2 mục dưới đây là dữ liệu tuần theo năm và tính từ thứ 6 tuần này đến thứ 5 của tuần tiếp theo.
+                  </p>
                 </div>
 
                 {/* BIỂU MẪU EXCEL 1 */}
@@ -5223,7 +5326,7 @@ export default function App() {
                               <input 
                                 type="number" 
                                 value={w.scrapCost === null || Number.isNaN(w.scrapCost) ? "" : w.scrapCost}
-                                onChange={(e) => updateScrapMetric("weekly", idx, e.target.value)}
+                                onChange={(e) => updateScrapMetric("weekly", w.week, e.target.value)}
                                 className="w-full min-w-[70px] bg-transparent text-right outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-slate-800/50 focus:bg-slate-800 focus:text-rose-400"
                                 placeholder="—"
                               />
@@ -5260,7 +5363,7 @@ export default function App() {
                                 type="number" 
                                 step="0.1"
                                 value={w.errorRate === null || Number.isNaN(w.errorRate) ? "" : w.errorRate}
-                                onChange={(e) => updateDclrErrorMetric("weekly", idx, e.target.value)}
+                                onChange={(e) => updateDclrErrorMetric("weekly", w.week, e.target.value)}
                                 className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] hover:bg-slate-800/50 focus:bg-slate-800 ${
                                   w.errorRate === null ? "text-slate-500" :
                                   w.errorRate > 3 ? "text-rose-450" : "text-emerald-400"
@@ -6085,7 +6188,7 @@ export default function App() {
                                       </select>
                                     </div>
                                   </td>
-                                  <td className="py-1 px-2 border-r border-slate-800 text-cyan-500 font-bold min-w-[65px] w-[65px] text-center">{prodDef.factor}</td>
+                                  <td className="py-1 px-2 border-r border-slate-800 text-cyan-500 font-bold min-w-[65px] w-[65px] text-center">{prodDef.factor || 1}</td>
                                   <td className="p-0 border-r border-slate-800 min-w-[95px] w-[95px]">
                                     <input
                                       type="number"
@@ -6108,14 +6211,14 @@ export default function App() {
                                       />
                                     </td>
                                   ))}
-                                  <td className="py-1 px-2 font-bold text-emerald-400 border-r border-slate-800 bg-slate-900/30 min-w-[85px] w-[85px] text-center">{modelActual}</td>
+                                  <td className="py-1 px-2 font-bold text-emerald-400 border-r border-slate-800 bg-slate-900/30 min-w-[85px] w-[85px] text-center">{modelActual || 0}</td>
                                   <td className={`py-1 px-2 font-bold border-r border-slate-800 bg-slate-900/30 text-center min-w-[85px] w-[85px] ${
                                     modelActual - (item.dailyPlan || 0) >= 0 ? "text-emerald-400" : "text-rose-500"
                                   }`}>
                                     {modelActual - (item.dailyPlan || 0) > 0 ? `+${modelActual - (item.dailyPlan || 0)}` : modelActual - (item.dailyPlan || 0)}
                                   </td>
                                   <td className="py-1 px-2 font-bold text-cyan-400 border-r border-slate-800 bg-slate-900/30 text-center min-w-[115px] w-[115px]">
-                                    {Math.max(0, (item.dailyPlan || 0) + getPrevDayLeftover(item.productId, formDate) - modelActual)}
+                                    {Math.max(0, (item.dailyPlan || 0) + (getPrevDayLeftover(item.productId, formDate) || 0) - (modelActual || 0))}
                                   </td>
                                   <td className="py-1 px-2">
                                     <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-rose-500 hover:text-rose-400 transition" disabled={formModelItems.length === 1}>
@@ -6145,9 +6248,9 @@ export default function App() {
                               const sum = formModelItems
                                 .filter(item => filterDivision === "ALL" || (products.find(x => x.id === item.productId) || products[0]).group === filterDivision)
                                 .reduce((acc, item) => acc + (item.hourlyActuals[slot] || 0), 0);
-                              return <td key={slot} className="py-1 px-1 border-r border-slate-800 text-white min-w-[80px] w-[80px] text-center">{sum}</td>
+                              return <td key={slot} className="py-1 px-1 border-r border-slate-800 text-white min-w-[80px] w-[80px] text-center">{sum || 0}</td>
                             })}
-                            <td className="py-1 px-1 border-r border-slate-800 text-rose-400">{displayTotalActualQty}</td>
+                            <td className="py-1 px-1 border-r border-slate-800 text-rose-400">{displayTotalActualQty || 0}</td>
                             <td className={`py-1 px-1 border-r border-slate-800 font-bold text-center ${
                               displayTotalActualQty - displayTotalPlanQty >= 0 ? "text-emerald-400" : "text-rose-400"
                             }`}>
@@ -6174,9 +6277,9 @@ export default function App() {
                                 const p = products.find(x => x.id === item.productId) || products[0];
                                 sumEq += Math.round((item.hourlyActuals[slot] || 0) * p.factor);
                               });
-                              return <td key={slot} className="py-1 px-1 border-r border-slate-800 text-cyan-400 min-w-[80px] w-[80px] text-center">{sumEq}</td>
+                              return <td key={slot} className="py-1 px-1 border-r border-slate-800 text-cyan-400 min-w-[80px] w-[80px] text-center">{sumEq || 0}</td>
                             })}
-                            <td className="py-1 px-1 border-r border-slate-800 text-cyan-400">{displayTotalEqQty}</td>
+                            <td className="py-1 px-1 border-r border-slate-800 text-cyan-400">{displayTotalEqQty || 0}</td>
                             <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                             <td className="py-1 px-1 border-r border-slate-800 text-slate-500">-</td>
                             <td></td>
@@ -6376,7 +6479,7 @@ export default function App() {
                                     />
                                   </td>
                                 ))}
-                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountRO}</td>
+                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountRO || 0}</td>
                                 <td className="border-r border-slate-800"></td>
                                 <td className="border-r border-slate-800"></td>
                                 <td></td>
@@ -6397,7 +6500,7 @@ export default function App() {
                                     />
                                   </td>
                                 ))}
-                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountRO}</td>
+                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountRO || 0}</td>
                                 <td className="border-r border-slate-800"></td>
                                 <td className="border-r border-slate-800"></td>
                                 <td></td>
@@ -6448,7 +6551,7 @@ export default function App() {
                                     />
                                   </td>
                                 ))}
-                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountRMA}</td>
+                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountRMA || 0}</td>
                                 <td className="border-r border-slate-800"></td>
                                 <td className="border-r border-slate-800"></td>
                                 <td></td>
@@ -6469,7 +6572,7 @@ export default function App() {
                                     />
                                   </td>
                                 ))}
-                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountRMA}</td>
+                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountRMA || 0}</td>
                                 <td className="border-r border-slate-800"></td>
                                 <td className="border-r border-slate-800"></td>
                                 <td></td>
@@ -6523,7 +6626,7 @@ export default function App() {
                                     />
                                   </td>
                                 ))}
-                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountBG}</td>
+                                <td className="border-r border-slate-800 text-rose-300 font-bold text-center">{formOfficialCountBG || 0}</td>
                                 <td className="border-r border-slate-800"></td>
                                 <td className="border-r border-slate-800"></td>
                                 <td></td>
@@ -6544,7 +6647,7 @@ export default function App() {
                                     />
                                   </td>
                                 ))}
-                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountBG}</td>
+                                <td className="border-r border-slate-800 text-amber-300 font-bold text-center">{formSeasonalCountBG || 0}</td>
                                 <td className="border-r border-slate-800"></td>
                                 <td className="border-r border-slate-800"></td>
                                 <td></td>
@@ -8402,7 +8505,7 @@ export default function App() {
 
                           const isPast = historyYear < currentYear || (historyYear === currentYear && m.month < currentMonth);
                           const isCurrent = historyYear === currentYear && m.month === currentMonth;
-                          const isLocked = isPast || isCurrent;
+                          const isLocked = (isPast || isCurrent) && !(historyYear === 2026 && m.month === 7);
                           
                           // Auto report for past and current months
                           const isAutoReportMonth = isLocked;
@@ -8614,7 +8717,7 @@ export default function App() {
                                 const data = payload[0].payload;
                                 return (
                                   <div className="bg-slate-950 p-3 border border-slate-800 rounded-lg shadow-xl text-xs space-y-1.5 font-sans">
-                                    <p className="font-semibold text-white border-b border-slate-800 pb-1">{data.monthFullName} ({historyYear})</p>
+                                    <p className="font-semibold text-white border-b border-slate-800 pb-1">{data.monthFullName} ({selectedYear})</p>
                                     <p className="text-slate-400">
                                       Thực tế ({historyYear}): <span className="text-orange-400 font-semibold">{data.hasActualData ? `${data.actualNSLD}%` : "Chưa nhập / Trống"}</span>
                                     </p>
