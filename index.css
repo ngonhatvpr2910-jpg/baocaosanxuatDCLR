@@ -208,11 +208,11 @@ input, select, textarea {
   background-color: var(--bg-card) !important;
 }
 
-.light-theme tr:nth-child(even) td {
+.light-theme tbody tr:nth-child(even) td {
   background-color: #f8fafc !important;
 }
 
-.light-theme tr:hover td {
+.light-theme tbody tr:hover td {
   background-color: #f1f5f9;
 }
 
@@ -451,4 +451,14 @@ input, select, textarea {
 
 .light-theme .text-sky-400 {
   color: #0369a1 !important;
+
+/* Force footer total rows to have orange background in light mode */
 }
+/* Force footer total rows to have orange background in light mode */
+.light-theme tfoot td { background-color: #fbcfa5 !important; }
+-e 
+.light-theme table tfoot tr td, table tfoot tr td { background-color: #fbcfa5 !important; color: #000000 !important; border-color: #cbd5e1 !important; }
+-e 
+tfoot td { background-color: #fbcfa5 !important; }
+-e 
+.light-theme tfoot td { background-color: #fbcfa5 !important; }
