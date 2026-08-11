@@ -1,14 +1,14 @@
-import { DigitalClock } from "./src/appUtils";
+import { DigitalClock } from "./appUtils";
 
-import { SystemDataTab } from './src/components/SystemDataTab';
-import { AnalyticsTab } from './src/components/AnalyticsTab';
-import { HistoryDataTab } from './src/components/HistoryDataTab';
-import { WeeklyReportTab } from './src/components/WeeklyReportTab';
-import { ProductsTab } from './src/components/ProductsTab';
-import { MonthlyPlanTab } from './src/components/MonthlyPlanTab';
-import { LoggingTab } from './src/components/LoggingTab';
-import { ImeiTrackingTab } from './src/components/ImeiTrackingTab';
-import { DashboardTab } from './src/components/DashboardTab';
+import { SystemDataTab } from './SystemDataTab';
+import { AnalyticsTab } from './AnalyticsTab';
+import { HistoryDataTab } from './HistoryDataTab';
+import { WeeklyReportTab } from './WeeklyReportTab';
+import { ProductsTab } from './ProductsTab';
+import { MonthlyPlanTab } from './MonthlyPlanTab';
+import { LoggingTab } from './LoggingTab';
+import { ImeiTrackingTab } from './ImeiTrackingTab';
+import { DashboardTab } from './DashboardTab';
 import { useState } from 'react';
 
 
@@ -106,7 +106,7 @@ import {
   INITIAL_ASSEMBLY_DAILY_REPORTS,
 } from "./data";
 
-import { useAppLogic } from './src/useAppLogic';
+import { useAppLogic } from './useAppLogic';
 export default function App() {
   const {
     showHeader,
