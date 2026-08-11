@@ -417,7 +417,7 @@ export const LoggingTab = ({
                           )}
 
                           {/* Productivity RMA % */}
-                          {(filterDivision === "ALL" || filterDivision === "MLN" || filterDivision === "RMA") && (
+                          {(filterDivision === "ALL" || filterDivision === "RMA") && (
                             <tr key="productivity-rma-row" className="prod-row-rma font-bold bg-amber-950/30 border-t border-slate-300 text-amber-400 text-[14px]">
                               <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 prod-row-rma bg-amber-950/90 z-10 whitespace-nowrap">
                                 NSLĐ DCRMA (%)
@@ -595,8 +595,12 @@ export const LoggingTab = ({
                               <tr key="ro-spacer" className="h-2 bg-slate-950">
                                 <td colSpan={formSlots.length + 7}></td>
                               </tr>
-
-                              {/* --- worker tracking: LINE RMA --- */}
+                            </React.Fragment>
+                          )}
+                          
+                          {/* --- worker tracking: LINE RMA --- */}
+                          {(filterDivision === "ALL" || filterDivision === "RMA") && (
+                            <React.Fragment key="worker-tracking-rma">
                               <tr key="rma-header" className="bg-amber-950/20 border-t border-amber-900/50">
                                 <td colSpan={3} className="py-1 px-1 text-left pl-2 text-amber-400 font-bold border-r border-slate-800 sticky left-0 bg-slate-950 z-10 whitespace-nowrap">
                                   📍 DÂY CHUYỀN LẮP RÁP RMA (RW)
@@ -794,15 +798,21 @@ export const LoggingTab = ({
                               />
                               <Legend iconType="circle" wrapperStyle={{ fontSize: '13px', paddingTop: '10px' }} />
                               <ReferenceLine y={kpis.monthTarget} stroke="#10b981" strokeDasharray="3 3" />
-                              <Bar isAnimationActive={false} dataKey="DCRO" name="NSLĐ DCRO" fill="#10b981" radius={[2, 2, 0, 0]}>
-                                <LabelList dataKey="DCRO" position="top" offset={5} fill="#10b981" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
-                              </Bar>
-                              <Bar isAnimationActive={false} dataKey="DCRMA" name="NSLĐ DCRMA" fill="#f59e0b" radius={[2, 2, 0, 0]}>
-                                <LabelList dataKey="DCRMA" position="top" offset={22} fill="#f59e0b" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
-                              </Bar>
-                              <Bar isAnimationActive={false} dataKey="DCBG" name="NSLĐ DCBG" fill="#0ea5e9" radius={[2, 2, 0, 0]}>
-                                <LabelList dataKey="DCBG" position="top" offset={39} fill="#0ea5e9" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
-                              </Bar>
+                              {(filterDivision === "ALL" || filterDivision === "MLN") && (
+                                <Bar isAnimationActive={false} dataKey="DCRO" name="NSLĐ DCRO" fill="#10b981" radius={[2, 2, 0, 0]}>
+                                  <LabelList dataKey="DCRO" position="top" offset={5} fill="#10b981" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                                </Bar>
+                              )}
+                              {(filterDivision === "ALL" || filterDivision === "RMA") && (
+                                <Bar isAnimationActive={false} dataKey="DCRMA" name="NSLĐ DCRMA" fill="#f59e0b" radius={[2, 2, 0, 0]}>
+                                  <LabelList dataKey="DCRMA" position="top" offset={22} fill="#f59e0b" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                                </Bar>
+                              )}
+                              {(filterDivision === "ALL" || filterDivision === "BG") && (
+                                <Bar isAnimationActive={false} dataKey="DCBG" name="NSLĐ DCBG" fill="#0ea5e9" radius={[2, 2, 0, 0]}>
+                                  <LabelList dataKey="DCBG" position="top" offset={39} fill="#0ea5e9" fontSize={12} fontWeight="semibold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                                </Bar>
+                              )}
                               <Line isAnimationActive={false} type="monotone" dataKey="DCLR" name="NSLĐ Phân Xưởng LR" stroke="#f43f5e" strokeWidth={2} dot={{ r: 4, fill: "#f43f5e" }} activeDot={{ r: 6 }}>
                                 <LabelList dataKey="DCLR" position="top" fill="#f43f5e" fontSize={13} fontWeight="bold" formatter={(v: number) => v > 0 ? `${v}%` : ''} offset={56} />
                               </Line>
