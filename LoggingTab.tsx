@@ -199,12 +199,12 @@ export const LoggingTab = ({
                     <div className="overflow-x-auto border border-slate-800 rounded-lg shadow-xl shadow-slate-950">
                       <table className="matrix-table w-full text-[12px] font-mono whitespace-nowrap text-center">
                         <thead>
-                          <tr className="bg-yellow-400 text-slate-950 border-b border-slate-800 font-bold uppercase">
-                            <th className="py-1 px-1 text-left sticky left-0 bg-yellow-400 z-10 min-w-[160px] w-[160px]">Model Sản Xuất</th>
-                            <th className="py-1 px-1 border-r border-yellow-500 bg-yellow-400 min-w-[65px] w-[65px] text-center">HSQĐ</th>
-                            <th className="py-1 px-1 border-r border-yellow-500 bg-yellow-400 min-w-[95px] w-[95px] text-center">KHSX Ngày</th>
+                          <tr className="!bg-yellow-400 text-slate-950 border-b border-slate-800 font-bold uppercase">
+                            <th className="py-1 px-1 text-left sticky left-0 !bg-yellow-400 z-10 min-w-[160px] w-[160px]">Model Sản Xuất</th>
+                            <th className="py-1 px-1 border-r border-yellow-500 !bg-yellow-400 min-w-[65px] w-[65px] text-center">HSQĐ</th>
+                            <th className="py-1 px-1 border-r border-yellow-500 !bg-yellow-400 min-w-[95px] w-[95px] text-center">KHSX Ngày</th>
                             {formSlots.map(slot => (
-                              <th key={slot} className="py-1 px-1 border-r border-yellow-500 bg-yellow-400 relative group min-w-[80px] w-[80px] text-center">
+                              <th key={slot} className="py-1 px-1 border-r border-yellow-500 !bg-yellow-400 relative group min-w-[80px] w-[80px] text-center">
                                 <div className="flex items-center justify-center gap-0.5 flex-nowrap whitespace-nowrap text-[11px] font-bold">
                                   <span>{slot}</span>
                                   <button
@@ -218,10 +218,10 @@ export const LoggingTab = ({
                                 </div>
                               </th>
                             ))}
-                            <th className="py-1 px-1 border-r border-yellow-500 bg-yellow-400 min-w-[85px] w-[85px] text-center">Tổng Lượng</th>
-                            <th className="py-1 px-1 border-r border-yellow-500 bg-yellow-400 min-w-[85px] w-[85px] text-center">Chênh Lệch</th>
-                            <th className="py-1 px-1 border-r border-yellow-500 bg-yellow-400 min-w-[115px] w-[115px] text-center">SL CẦN HOÀN THÀNH LSX</th>
-                            <th className="py-1 px-1 text-center w-8 bg-yellow-400">Xóa</th>
+                            <th className="py-1 px-1 border-r border-yellow-500 !bg-yellow-400 min-w-[85px] w-[85px] text-center">Tổng Lượng</th>
+                            <th className="py-1 px-1 border-r border-yellow-500 !bg-yellow-400 min-w-[85px] w-[85px] text-center">Chênh Lệch</th>
+                            <th className="py-1 px-1 border-r border-yellow-500 !bg-yellow-400 min-w-[115px] w-[115px] text-center">SL CẦN HOÀN THÀNH LSX</th>
+                            <th className="py-1 px-1 text-center w-8 !bg-yellow-400">Xóa</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800 bg-slate-950/30 text-slate-200">
@@ -285,7 +285,7 @@ export const LoggingTab = ({
                                   }`}>
                                     {modelActual - (item.dailyPlan || 0) > 0 ? `+${modelActual - (item.dailyPlan || 0)}` : modelActual - (item.dailyPlan || 0)}
                                   </td>
-                                  <td className="py-1 px-2 font-bold text-cyan-400 border-r border-slate-800 bg-slate-900/30 text-center min-w-[115px] w-[115px]">
+                                  <td className="py-1 px-2 font-bold text-sky-400 border-r border-slate-800 bg-slate-900/30 text-center min-w-[115px] w-[115px]">
                                     {Math.max(0, (item.dailyPlan || 0) + (getPrevDayLeftover(item.productId, formDate) || 0) - (modelActual || 0))}
                                   </td>
                                   <td className="py-1 px-2">
@@ -385,8 +385,8 @@ export const LoggingTab = ({
 
                           {/* Productivity RO % */}
                           {(filterDivision === "ALL" || filterDivision === "MLN") && (
-                            <tr key="productivity-ro-row" className="bg-white font-bold border-t border-slate-300 text-blue-700 text-[14px]">
-                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 bg-white z-10 whitespace-nowrap">
+                            <tr key="productivity-ro-row" className="prod-row-ro font-bold bg-emerald-950/30 border-t border-slate-300 text-emerald-400 text-[14px]">
+                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 prod-row-ro bg-emerald-950/90 z-10 whitespace-nowrap">
                                 NSLĐ DCRO (%)
                               </td>
                               {formSlots.map(slot => {
@@ -404,22 +404,22 @@ export const LoggingTab = ({
                                   prodPct = Number(((sumEqRO / (workersRO * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-blue-700">
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-emerald-700">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
                               <td className="py-1 px-1 border-r border-slate-300 font-bold text-center">{(formAggregates.avgProductivityRO || 0).toFixed(1)}%</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-emerald-700 text-center">-</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-emerald-700 text-center">-</td>
                               <td></td>
                             </tr>
                           )}
 
                           {/* Productivity RMA % */}
                           {(filterDivision === "ALL" || filterDivision === "MLN" || filterDivision === "RMA") && (
-                            <tr key="productivity-rma-row" className="bg-white font-bold border-t border-slate-300 text-blue-700 text-[14px]">
-                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 bg-white z-10 whitespace-nowrap">
+                            <tr key="productivity-rma-row" className="prod-row-rma font-bold bg-amber-950/30 border-t border-slate-300 text-amber-400 text-[14px]">
+                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 prod-row-rma bg-amber-950/90 z-10 whitespace-nowrap">
                                 NSLĐ DCRMA (%)
                               </td>
                               {formSlots.map(slot => {
@@ -443,22 +443,22 @@ export const LoggingTab = ({
                                   prodPct = Number(((sumEqRMA / (workersRMA * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-blue-700">
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-amber-700">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
                               <td className="py-1 px-1 border-r border-slate-300 font-bold text-center">{(formAggregates.avgProductivityRMA || 0).toFixed(1)}%</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-amber-700 text-center">-</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-amber-700 text-center">-</td>
                               <td></td>
                             </tr>
                           )}
 
                           {/* Productivity BG % */}
                           {(filterDivision === "ALL" || filterDivision === "BG") && (
-                            <tr key="productivity-bg-row" className="bg-white font-bold border-t border-slate-300 text-blue-700 text-[14px]">
-                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 bg-white z-10 whitespace-nowrap">
+                            <tr key="productivity-bg-row" className="prod-row-bg font-bold bg-sky-950/30 border-t border-slate-300 text-sky-400 text-[14px]">
+                              <td colSpan={3} className="py-1 px-1 text-right border-r border-slate-300 sticky left-0 prod-row-bg bg-sky-950/90 z-10 whitespace-nowrap">
                                 NSLĐ DCBG (%)
                               </td>
                               {formSlots.map(slot => {
@@ -475,22 +475,22 @@ export const LoggingTab = ({
                                   prodPct = Number(((sumEqBG / (workersBG * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className="py-1 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-blue-700">
+                                  <td key={slot} className="py-1 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-sky-700">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
                               <td className="py-1 px-1 border-r border-slate-300 font-bold text-center">{(formAggregates.avgProductivityBG || 0).toFixed(1)}%</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-sky-700 text-center">-</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-sky-700 text-center">-</td>
                               <td></td>
                             </tr>
                           )}
 
                           {/* Combined Productivity % */}
                           {filterDivision === "ALL" && (
-                            <tr key="productivity-combined-row" className="bg-white font-black text-blue-700 border-t border-slate-300 text-[15px]">
-                              <td colSpan={3} className="py-2 px-1 text-right border-r border-slate-300 sticky left-0 bg-white z-10 whitespace-nowrap uppercase tracking-wide">
+                            <tr key="productivity-combined-row" className="prod-row-lr font-black bg-rose-950/30 text-rose-400 border-t border-slate-300 text-[15px]">
+                              <td colSpan={3} className="py-2 px-1 text-right border-r border-slate-300 sticky left-0 prod-row-lr bg-rose-950/90 z-10 whitespace-nowrap uppercase tracking-wide">
                                 NSLĐ Phân Xưởng LR (%)
                               </td>
                               {formSlots.map(slot => {
@@ -505,14 +505,14 @@ export const LoggingTab = ({
                                   prodPct = Number(((sumEqCombined / (workersCombined * (INDUSTRIAL_STANDARDS.standardQtyPerManday / 8))) * 100).toFixed(1));
                                 }
                                 return (
-                                  <td key={slot} className="py-2 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-blue-700">
+                                  <td key={slot} className="py-2 px-1 border-r border-slate-300 min-w-[80px] w-[80px] text-center text-rose-700">
                                     {prodPct > 0 ? `${prodPct}%` : "-"}
                                   </td>
                                 )
                               })}
                               <td className="py-2 px-1 border-r border-slate-300 text-center">{(formAggregates.avgProductivity || 0).toFixed(1)}%</td>
-                              <td className="py-2 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
-                              <td className="py-2 px-1 border-r border-slate-300 text-blue-700 text-center">-</td>
+                              <td className="py-2 px-1 border-r border-slate-300 text-rose-700 text-center">-</td>
+                              <td className="py-2 px-1 border-r border-slate-300 text-rose-700 text-center">-</td>
                               <td className="bg-slate-700/80"></td>
                             </tr>
                           )}
@@ -574,7 +574,7 @@ export const LoggingTab = ({
                                 <td></td>
                               </tr>
 
-                              <tr key="ro-total-workers" className="bg-emerald-950/30 text-[14px]">
+                              <tr key="ro-total-workers" className="bg-emerald-950/30 text-[14px] total-row-ro">
                                 <td colSpan={3} className="py-2 px-2 text-right text-emerald-400 font-bold border-r border-slate-800 sticky left-0 bg-emerald-950/90 z-10 pl-4 whitespace-nowrap">
                                   ↳ Tổng nhân sự DCRO
                                 </td>
@@ -646,7 +646,7 @@ export const LoggingTab = ({
                                 <td></td>
                               </tr>
 
-                              <tr key="rma-total-workers" className="bg-amber-950/30 text-[14px]">
+                              <tr key="rma-total-workers" className="bg-amber-950/30 text-[14px] total-row-rma">
                                 <td colSpan={3} className="py-2 px-2 text-right text-amber-400 font-bold border-r border-slate-800 sticky left-0 bg-amber-950/90 z-10 pl-4 whitespace-nowrap">
                                   ↳ Tổng nhân sự DCRMA
                                 </td>
@@ -721,7 +721,7 @@ export const LoggingTab = ({
                                 <td></td>
                               </tr>
 
-                              <tr key="bg-total-workers" className="bg-sky-950/30 text-[14px]">
+                              <tr key="bg-total-workers" className="bg-sky-950/30 text-[14px] total-row-bg">
                                 <td colSpan={3} className="py-2 px-2 text-right text-sky-400 font-bold border-r border-slate-800 sticky left-0 bg-sky-950/90 z-10 pl-4 whitespace-nowrap">
                                   ↳ Tổng nhân sự DCBG
                                 </td>
@@ -837,7 +837,7 @@ export const LoggingTab = ({
                     <p className="text-xs text-slate-400">Xem vết dữ liệu, truy xuất báo cáo theo giờ hoặc tổng hợp gọn theo ngày</p>
                   </div>
 
-                  <span className="text-[11px] font-mono text-cyan-400 border border-slate-800 px-2 py-1 rounded bg-slate-900">
+                  <span className="text-[11px] font-mono text-sky-400 border border-slate-800 px-2 py-1 rounded bg-slate-900">
                     Quy mô: <span className="font-bold">{productionLogs.length} bản ghi</span> | <span className="font-bold text-rose-455">{dailySummaries.length} ngày</span>
                   </span>
                 </div>
@@ -975,7 +975,7 @@ export const LoggingTab = ({
                                           const startHr = slot.split(" ")[0] || slot;
                                           return (
                                             <span key={slot} className="text-[9px] bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800 text-slate-450 font-mono" title={slot}>
-                                              {startHr}: <span className="text-cyan-400 font-extrabold">{val}</span>
+                                              {startHr}: <span className="text-sky-400 font-extrabold">{val}</span>
                                             </span>
                                           );
                                         })}
@@ -999,7 +999,7 @@ export const LoggingTab = ({
                                     <div className="flex items-center justify-center gap-1">
                                       <button
                                         onClick={() => handleEditLog(log.date, log.shift)}
-                                        className="p-1 text-slate-400 hover:text-cyan-500 rounded hover:bg-cyan-950 bg-transparent border border-transparent transition cursor-pointer"
+                                        className="p-1 text-slate-400 hover:text-cyan-500 rounded hover:bg-sky-950 bg-transparent border border-transparent transition cursor-pointer"
                                         title="Chỉnh sửa nhật ký này"
                                       >
                                         <Edit className="w-4 h-4 inline-block" />
@@ -1059,7 +1059,7 @@ export const LoggingTab = ({
                           <div className="border-l border-slate-800 h-8 self-center"></div>
                           <div className="text-center">
                             <span className="text-slate-500 text-[10px] block font-sans">Tổng Quy Đổi</span>
-                            <span className="text-sm font-bold text-cyan-400">
+                            <span className="text-sm font-bold text-sky-400">
                               {hourlyChartData.reduce((acc, curr) => acc + curr["Quy đổi (SP)"], 0)} SP
                             </span>
                           </div>
@@ -1163,37 +1163,37 @@ export const LoggingTab = ({
                                         {log.date} | {log.lineName} | {log.shift.split(" ")[0]}
                                       </div>
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h08_09 !== null && !Number.isNaN(h08_09) ? h08_09 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h09_10 !== null && !Number.isNaN(h09_10) ? h09_10 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h10_11 !== null && !Number.isNaN(h10_11) ? h10_11 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h11_12 !== null && !Number.isNaN(h11_12) ? h11_12 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h13_14 !== null && !Number.isNaN(h13_14) ? h13_14 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h14_15 !== null && !Number.isNaN(h14_15) ? h14_15 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h15_16 !== null && !Number.isNaN(h15_16) ? h15_16 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h16_17 !== null && !Number.isNaN(h16_17) ? h16_17 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h17_18 !== null && !Number.isNaN(h17_18) ? h17_18 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h18_19 !== null && !Number.isNaN(h18_19) ? h18_19 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
-                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-cyan-400 font-bold border-r border-slate-900">
+                                    <td className="py-2.5 px-1.5 text-center bg-slate-1000 text-sky-400 font-bold border-r border-slate-900">
                                       {h19_20 !== null && !Number.isNaN(h19_20) ? h19_20 : <span className="text-slate-700 font-normal text-[10px]">-</span>}
                                     </td>
                                     <td className="py-2.5 px-2 text-right font-bold text-white text-[11px]">
@@ -1286,7 +1286,7 @@ export const LoggingTab = ({
                                   <td className="py-3.5 px-3 text-right font-mono text-white text-[11.5px] font-bold">
                                     {summary.totalActual || 0} <span className="text-[10px] text-slate-500 font-normal">Cái</span>
                                   </td>
-                                  <td className="py-3.5 px-3 text-right font-mono text-cyan-400 font-extrabold text-[12px]">
+                                  <td className="py-3.5 px-3 text-right font-mono text-sky-400 font-extrabold text-[12px]">
                                     {summary.totalEquivalent || 0} <span className="font-normal text-[9px] text-slate-500">SP</span>
                                   </td>
                                   <td className="py-3.5 px-3 text-right font-mono text-indigo-400 text-[11.5px] font-bold">

@@ -430,3 +430,25 @@ input, select, textarea {
   background-color: #ffffff !important;
   color: #0f172a !important;
 }
+
+
+.light-theme .matrix-table tr.prod-row-ro td { background-color: #d1fae5 !important; }
+.light-theme .matrix-table tr.prod-row-rma td { background-color: #fef3c7 !important; }
+.light-theme .matrix-table tr.prod-row-bg td { background-color: #e0f2fe !important; }
+.light-theme .matrix-table tr.prod-row-lr td { background-color: #ffe4e6 !important; }
+
+.light-theme .matrix-table tr.total-row-ro td { background-color: #d1fae5 !important; }
+.light-theme .matrix-table tr.total-row-rma td { background-color: #fef3c7 !important; }
+.light-theme .matrix-table tr.total-row-bg td { background-color: #e0f2fe !important; }
+
+.light-theme .matrix-table tr.total-row-ro td { background-color: #d1fae5 !important; }
+.light-theme .matrix-table tr.total-row-rma td { background-color: #fef3c7 !important; }
+.light-theme .matrix-table tr.total-row-bg td { background-color: #e0f2fe !important; }
+.light-theme .matrix-table tr.prod-row-ro td { background-color: #d1fae5 !important; }
+.light-theme .matrix-table tr.prod-row-rma td { background-color: #fef3c7 !important; }
+.light-theme .matrix-table tr.prod-row-bg td { background-color: #e0f2fe !important; }
+.light-theme .matrix-table tr.prod-row-lr td { background-color: #ffe4e6 !important; }
+
+.light-theme .text-sky-400 {
+  color: #0369a1 !important;
+}
