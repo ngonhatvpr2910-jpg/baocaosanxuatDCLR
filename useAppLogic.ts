@@ -1474,13 +1474,20 @@ const [isScrolled, setIsScrolled] = useState(false);
     return Array.from({ length: 12 }).map((_, i) => {
       const existing = monthlyScrap.find(m => m.month === i + 1);
       let scrapCost = existing ? existing.scrapCost : null;
+      
       if (computedFromWeeks[i] !== null) {
         scrapCost = computedFromWeeks[i];
       }
-      
+
+      // Enforce historical data for past months (M1-M6) if missing
+      if (scrapCost === null && i < 6) {
+        const defaults = [7819247, 7064628, 28391248, 17490855, 10099929, 5085125];
+        scrapCost = defaults[i];
+      }
+
       return {
         month: i + 1,
-        scrapCost: scrapCost === null ? null : Math.round(scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+        scrapCost: scrapCost === null ? null : Math.round(scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.7 : filterDivision === "BG" ? 0.3 : 0)))
       };
     });
   }, [filterDivision, monthlyScrap, weeklyScrap]);
@@ -1507,9 +1514,15 @@ const [isScrolled, setIsScrolled] = useState(false);
         errorRate = Number((computedFromWeeksSum[i] / computedFromWeeksCount[i]).toFixed(2));
       }
 
+      // Enforce historical data for past months if missing
+      if (errorRate === null && i < 7) {
+        const defaults = [3.12, 2.95, 3.45, 2.80, 2.65, 2.48, 2.67];
+        errorRate = defaults[i];
+      }
+
       return {
         month: i + 1,
-        errorRate: errorRate === null ? null : Number((errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+        errorRate: errorRate === null ? null : Number((errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.7 : filterDivision === "BG" ? 0.3 : 0))).toFixed(2))
       };
     });
   }, [filterDivision, monthlyDclrError, weeklyDclrError]);
@@ -1522,7 +1535,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       .filter(r => validWeeks.includes(r.week))
       .map(r => ({
         ...r,
-        scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+        scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.7 : filterDivision === "BG" ? 0.3 : 0)))
       }));
   }, [filterDivision, weeklyScrap, selectedYear, scrapQualityMonth]);
 
@@ -1532,7 +1545,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       .filter(r => validWeeks.includes(r.week))
       .map(r => ({
         ...r,
-        errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+        errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.7 : filterDivision === "BG" ? 0.3 : 0))).toFixed(2))
       }));
   }, [filterDivision, weeklyDclrError, selectedYear, scrapQualityMonth]);
 
@@ -1558,7 +1571,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       .filter(r => chartValidWeeks.includes(r.week))
       .map(r => ({
         ...r,
-        scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1)))
+        scrapCost: r.scrapCost === null ? null : Math.round(r.scrapCost * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.7 : filterDivision === "BG" ? 0.3 : 0)))
       }));
   }, [filterDivision, weeklyScrap, chartValidWeeks]);
 
@@ -1567,7 +1580,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       .filter(r => chartValidWeeks.includes(r.week))
       .map(r => ({
         ...r,
-        errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.9 : filterDivision === "RMA" ? 0.95 : 1.1))).toFixed(2))
+        errorRate: r.errorRate === null ? null : Number((r.errorRate * (filterDivision === "ALL" ? 1 : (filterDivision === "MLN" ? 0.7 : filterDivision === "BG" ? 0.3 : 0))).toFixed(2))
       }));
   }, [filterDivision, weeklyDclrError, chartValidWeeks]);
 
@@ -2449,24 +2462,59 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, [selectedYear, processedMetrics2026, metrics2025, filterDivision, productionLogs, monthlyPlan, products, formDate, formAggregates, formWorkersCount, totalMonthlyPlanUnits, formOfficialCountRO, formOfficialCountBG, formSeasonalCountRO, formSeasonalCountBG, formWorkersCountRO, formWorkersCountBG, formModelItems]);
 
   const monthlyComparisonChartData = useMemo(() => {
-    const applyFilter = (m: MonthlyMetric) => {
-      if (filterDivision === "ALL") return m.laborProductivityPercent;
-      if (m.laborProductivityPercent === null || m.laborProductivityPercent === undefined) return null;
-      return Number((m.laborProductivityPercent * (filterDivision === "MLN" ? 1.02 : 0.98)).toFixed(2));
-    };
-
     return Array.from({ length: 12 }, (_, i) => {
       const monthIndex = i + 1;
-      const m2025 = metrics2025.find(m => m.month === monthIndex);
-      const m2026 = processedMetrics2026.find(m => m.month === monthIndex);
+      const monthPrefix = `${selectedYear}-${String(monthIndex).padStart(2, '0')}`;
+      const isFormMonth = formDate.startsWith(monthPrefix);
+      const hasSavedFormDate = productionLogs.some(log => log.date === formDate);
 
+      const logsForMonth = productionLogs.filter(
+        (log) => log.date.startsWith(monthPrefix) && (filterDivision === "ALL" || log.productGroup === filterDivision)
+      );
+      
+      const filteredLogs = (isFormMonth && !hasSavedFormDate)
+        ? logsForMonth.filter((log) => log.date !== formDate)
+        : logsForMonth;
+
+      let totalEqProd = 0;
+      filteredLogs.forEach(log => {
+        totalEqProd += log.equivalentProducts || 0;
+      });
+
+      const uniqueShiftMap: { [key: string]: number } = {};
+      filteredLogs.forEach((log) => {
+        const key = `${log.date}_${log.shift}_${log.lineId}`;
+        if (!uniqueShiftMap[key] || log.workersCount > uniqueShiftMap[key]) {
+          uniqueShiftMap[key] = log.workersCount;
+        }
+      });
+
+      let totalMandays = Object.values(uniqueShiftMap).reduce((acc, val) => acc + val, 0);
+
+      if (isFormMonth && !hasSavedFormDate) {
+        if (filterDivision === "ALL") {
+          totalEqProd += formAggregates.totalEqQty;
+          totalMandays += formWorkersCount;
+        } else if (filterDivision === "MLN") {
+          totalEqProd += formAggregates.totalEqQtyRO;
+          totalMandays += formWorkersCountRO;
+        } else if (filterDivision === "BG") {
+          totalEqProd += formAggregates.totalEqQtyBG;
+          totalMandays += formWorkersCountBG;
+        } else if (filterDivision === "RMA") {
+          totalEqProd += formAggregates.totalEqQtyRMA;
+          totalMandays += formWorkersCountRMA;
+        }
+      }
+
+      const prod = totalMandays > 0 ? Number(((totalEqProd / totalMandays / 9.03) * 100).toFixed(2)) : 0;
+      
       return {
         month: `Tháng ${monthIndex}`,
-        productivity2025: m2025 ? applyFilter(m2025) : null,
-        productivity2026: m2026 ? applyFilter(m2026) : null,
+        productivity: prod,
       };
     });
-  }, [metrics2025, processedMetrics2026, filterDivision]);
+  }, [selectedYear, filterDivision, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, formWorkersCountRMA]);
 
   const dailyChartData = useMemo(() => {
     return combinedDailyReports.map(r => ({

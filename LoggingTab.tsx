@@ -1099,13 +1099,13 @@ export const LoggingTab = ({
                             />
                             <Legend wrapperStyle={{ fontSize: "10px" }} />
                             <Bar isAnimationActive={false} yAxisId="left" dataKey="Sản lượng (Cái)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20}>
-                              <LabelList dataKey="Sản lượng (Cái)" position="top" offset={5} fill="#f43f5e" fontSize={9} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? v : ''} />
+                              <LabelList dataKey="Sản lượng (Cái)" position="top" offset={5} fill="#f43f5e" fontSize={9} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? v : ''} />
                             </Bar>
                             <Bar isAnimationActive={false} yAxisId="left" dataKey="Quy đổi (SP)" fill="#22d3ee" radius={[4, 4, 0, 0]} barSize={20}>
-                              <LabelList dataKey="Quy đổi (SP)" position="top" offset={5} fill="#22d3ee" fontSize={9} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? v : ''} />
+                              <LabelList dataKey="Quy đổi (SP)" position="top" offset={5} fill="#22d3ee" fontSize={9} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? v : ''} />
                             </Bar>
                             <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="NSLĐ Đạt (%)" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: "#34d399" }}>
-                              <LabelList dataKey="NSLĐ Đạt (%)" position="top" offset={12} fill="#34d399" fontSize={10} fontWeight="semibold" formatter={(v: any) => v && !Number.isNaN(v) ? `${v}%` : ''} />
+                              <LabelList dataKey="NSLĐ Đạt (%)" position="top" offset={12} fill="#34d399" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${v}%` : ''} />
                             </Line>
                           </ComposedChart>
                           </ResponsiveContainer>
