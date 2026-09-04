@@ -1301,7 +1301,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       const currentMonth = now.getMonth() + 1;
       const isPast = m.year < currentYear || (m.year === currentYear && m.month < currentMonth);
       const isCurrent = m.year === currentYear && m.month === currentMonth;
-      const isLocked = (isPast || isCurrent) && !(m.year === 2026 && m.month === 7);
+      const isLocked = isPast || isCurrent;
       const isAutoReportMonth = isLocked;
 
       // Get logs for this month
@@ -2598,7 +2598,10 @@ const [isScrolled, setIsScrolled] = useState(false);
 
       // 3. Mục tiêu tháng lấy từ monthlyTargets
       const targetNSLD = monthlyTargets[`${historyYear}-${m.month}`] || 110;
-      const isPastPeriod = historyYear === 2025 || m.month <= 6;
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const isPastOrCurrent = historyYear < currentYear || (historyYear === currentYear && m.month <= currentMonth);
 
       return {
         month: `T${m.month}`,
@@ -2607,7 +2610,7 @@ const [isScrolled, setIsScrolled] = useState(false);
         actualNSLD: actualNSLD,
         nsld2025: nsld2025,
         targetNSLD: targetNSLD,
-        hasActualData: actualNSLD !== null && (isPastPeriod || (historyYear === 2026 && m.month === 7)),
+        hasActualData: actualNSLD !== null && isPastOrCurrent,
       };
     });
   }, [historyYear, metrics2025, processedMetrics2026, monthlyTargets]);
