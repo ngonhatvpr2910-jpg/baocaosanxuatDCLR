@@ -137,8 +137,8 @@ export const WeeklyReportTab = ({
                             </React.Fragment>
                           ))}
                           
-                          <td className="px-2 py-2 border-r border-slate-200 text-center font-mono font-black !text-rose-600 bg-slate-50 border-l-2 border-l-slate-300">{row.totalPlan.toLocaleString()}</td>
-                          <td className="px-2 py-2 border-r border-slate-200 text-center font-mono font-black !text-blue-700 bg-slate-50">{row.totalActual.toLocaleString()}</td>
+                          <td className="px-2 py-2 border-r border-slate-200 text-center font-mono font-black !text-rose-600 bg-slate-50 border-l-2 border-l-slate-300">{(row.totalPlan || 0).toLocaleString()}</td>
+                          <td className="px-2 py-2 border-r border-slate-200 text-center font-mono font-black !text-blue-700 bg-slate-50">{(row.totalActual || 0).toLocaleString()}</td>
                           <td className={`px-2 py-2 text-center font-mono font-black border-slate-200 bg-slate-50 ${row.diff < 0 ? "!text-rose-600" : "text-black"}`}>
                             {row.diff < 0 ? `(${Math.abs(row.diff).toLocaleString()})` : row.diff === 0 ? "-" : row.diff.toLocaleString()}
                           </td>
@@ -155,8 +155,8 @@ export const WeeklyReportTab = ({
                         <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs">-</td>
                         {weeklyReportData.dayTotals.map((d, i) => (
                           <React.Fragment key={i}>
-                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-rose-600">{d.plan.toLocaleString()}</td>
-                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-blue-700">{d.actual.toLocaleString()}</td>
+                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-rose-600">{(d.plan || 0).toLocaleString()}</td>
+                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-blue-700">{(d.actual || 0).toLocaleString()}</td>
                           </React.Fragment>
                         ))}
                         <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs border-l-2 border-l-slate-300 !text-rose-600">{weeklyReportData.grandTotal.plan?.toLocaleString()}</td>
@@ -171,8 +171,8 @@ export const WeeklyReportTab = ({
                         <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs">-</td>
                         {weeklyReportData.dayTotals.map((d, i) => (
                           <React.Fragment key={i}>
-                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-rose-600">{Number(d.planEq.toFixed(2)).toLocaleString()}</td>
-                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-blue-700">{Number(d.actualEq.toFixed(2)).toLocaleString()}</td>
+                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-rose-600">{Number((d.planEq || 0).toFixed(2)).toLocaleString()}</td>
+                            <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs !text-blue-700">{Number((d.actualEq || 0).toFixed(2)).toLocaleString()}</td>
                           </React.Fragment>
                         ))}
                         <td className="px-2 py-3 border-r border-slate-300 text-center font-mono text-xs border-l-2 border-l-slate-300 !text-rose-600">{Number((weeklyReportData.grandTotal.planEq || 0).toFixed(2)).toLocaleString()}</td>

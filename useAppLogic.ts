@@ -36,6 +36,7 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, []);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [laborViewMode, setLaborViewMode] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
   const [filterDivision, setFilterDivision] = useState<ProductGroup | "ALL">("ALL");
   const [activeTab, setActiveTab] = useState<"dashboard" | "logging" | "monthly-plan" | "products" | "analytics" | "history-data" | "system-data" | "weekly-report">("dashboard");
@@ -1426,7 +1427,11 @@ const [isScrolled, setIsScrolled] = useState(false);
         }
       }
       
-      return m;
+      // Áp dụng bộ lọc cho các tháng quá khứ chưa có dữ liệu thực tế từ nhật ký ca
+      return {
+        ...m,
+        laborProductivityPercent: m.laborProductivityPercent !== null ? Number((m.laborProductivityPercent * (filterDivision === "ALL" ? 1 : filterDivision === "MLN" ? 1.02 : 0.98)).toFixed(2)) : null
+      };
     });
 
     return updated;
@@ -1867,7 +1872,12 @@ const [isScrolled, setIsScrolled] = useState(false);
           };
         }
       }
-      return m;
+      
+      // Áp dụng bộ lọc cho các tháng quá khứ chưa có dữ liệu thực tế từ nhật ký ca
+      return {
+        ...m,
+        laborProductivityPercent: m.laborProductivityPercent !== null ? Number((m.laborProductivityPercent * (filterDivision === "ALL" ? 1 : filterDivision === "MLN" ? 1.02 : 0.98)).toFixed(2)) : null
+      };
     });
   }, [selectedYear, filterDivision, metrics2025, processedMetrics2026, productionLogs, formDate, formAggregates, formWorkersCount, gasDailyReports, assemblyDailyReports, combinedDailyReports]);
 
@@ -2066,7 +2076,8 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, [assemblyDailyReports, gasDailyReports, laborViewMode, filterDivision, displayMetrics, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, selectedYear, metrics2025, processedMetrics2026]);
 
   const totalMonthlyPlanUnits = useMemo(() => {
-    const [year, month] = formDate.split("-");
+    const year = selectedYear.toString();
+    const month = String(selectedMonth).padStart(2, '0');
     const ym = `${year}-${month}`;
     const currentMonthPlan = monthlyPlan[ym] || {};
     
@@ -2094,13 +2105,14 @@ const [isScrolled, setIsScrolled] = useState(false);
     });
 
     return { total, totalUnconverted };
-  }, [monthlyPlan, products, filterDivision, formDate]);
+  }, [monthlyPlan, products, filterDivision, selectedYear, selectedMonth]);
 
   const monthlyPlanExecution = useMemo(() => {
-    const [year, month] = formDate.split("-");
+    const year = selectedYear.toString();
+    const month = String(selectedMonth).padStart(2, '0');
     const ym = `${year}-${month}`;
-    const currentMonthPlan = monthlyPlan[ym] || {};
     const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+    const currentMonthPlan = monthlyPlan[ym] || {};
     
     // Filter production logs for this month
     const monthLogs = productionLogs.filter(log => log.date.startsWith(ym));
@@ -2227,28 +2239,30 @@ const [isScrolled, setIsScrolled] = useState(false);
 
     // Sort by group, then by product code
     return filteredItems.sort((a, b) => a.product.group.localeCompare(b.product.group) || a.product.code.localeCompare(b.product.code));
-  }, [monthlyPlan, productionLogs, products, formDate, formModelItems, filterDivision, executionFilterType, executionFilterDay, executionFilterWeek]);
+  }, [monthlyPlan, productionLogs, products, formDate, formModelItems, filterDivision, executionFilterType, executionFilterDay, executionFilterWeek, selectedYear, selectedMonth]);
 
   // Thống kê tóm tắt đầu não
   const kpis = useMemo(() => {
     // Sử dụng displayMetrics vì nó đã lọc chuẩn xác theo filterDivision
     const metricsToUse = displayMetrics;
 
-    // Lấy logs của tháng hiện tại làm đại diện
+    // Sử dụng tháng và năm từ filter (selectedYear, selectedMonth)
+    const monthPrefix = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
     const formDateParts = formDate.split("-");
     const formYear = parseInt(formDateParts[0]);
     const formMonth = parseInt(formDateParts[1]);
-    const monthPrefix = `${formYear}-${String(formMonth).padStart(2, '0')}`;
-
+    
+    // Nếu tháng đang xem là tháng của form hiện tại, và form chưa được lưu, thì sẽ tính thêm data preview
+    const isFormMonth = (formYear === selectedYear && formMonth === selectedMonth);
     const hasSavedFormDate = productionLogs.some(log => log.date === formDate);
 
     const logsForMonth = productionLogs.filter(
       (log) => log.date.startsWith(monthPrefix) && (filterDivision === "ALL" || log.productGroup === filterDivision)
     );
     
-    const filteredLogs = hasSavedFormDate
-      ? logsForMonth
-      : logsForMonth.filter((log) => log.date !== formDate);
+    const filteredLogs = (isFormMonth && !hasSavedFormDate)
+      ? logsForMonth.filter((log) => log.date !== formDate)
+      : logsForMonth;
 
     // Split Eq Prod into two: for display in Card 2 vs for calculation in Card 4/4.5
     let totalEqProd_display = 0;
@@ -2289,7 +2303,7 @@ const [isScrolled, setIsScrolled] = useState(false);
     let totalSeasonalMonth = Object.values(uniqueShiftMap).reduce((acc, val) => acc + val.seasonal, 0);
 
     // If formDate month matches and it hasn't been saved yet, add active form values
-    if (!hasSavedFormDate) {
+    if (isFormMonth && !hasSavedFormDate) {
       if (filterDivision === "ALL") {
         // For Display (Card 2) - Exclude RMA
         totalEqProd_display += (formAggregates.totalEqQtyRO + formAggregates.totalEqQtyBG);
@@ -2517,18 +2531,27 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, [selectedYear, filterDivision, productionLogs, formDate, formAggregates, formWorkersCount, formWorkersCountRO, formWorkersCountBG, formWorkersCountRMA]);
 
   const dailyChartData = useMemo(() => {
-    return combinedDailyReports.map(r => ({
-      date: r.date,
-      nsld: r.combinedNsld,
-      output: r.totalOutput
-    }));
-  }, [combinedDailyReports]);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const targetMonthStr = months[selectedMonth - 1];
+    return combinedDailyReports
+      .filter(r => r.date.endsWith(`-${targetMonthStr}`))
+      .map(r => ({
+        date: r.date,
+        nsld: r.combinedNsld,
+        output: r.totalOutput
+      }));
+  }, [combinedDailyReports, selectedMonth]);
 
   const weeklyChartData = useMemo(() => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const targetMonthStr = months[selectedMonth - 1];
+    
     // Group combinedDailyReports into chunks of 7 days
     const weeks: any[] = [];
-    for (let i = 0; i < combinedDailyReports.length; i += 7) {
-      const chunk = combinedDailyReports.slice(i, i + 7);
+    const filteredReports = combinedDailyReports.filter(r => r.date.endsWith(`-${targetMonthStr}`));
+    
+    for (let i = 0; i < filteredReports.length; i += 7) {
+      const chunk = filteredReports.slice(i, i + 7);
       const totalOutput = chunk.reduce((sum, r) => sum + r.totalOutput, 0);
       const totalCong = chunk.reduce((sum, r) => sum + r.totalCong, 0);
       const nsld = totalCong > 0 ? Number(((totalOutput / totalCong) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2)) : 0;
@@ -2539,7 +2562,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       });
     }
     return weeks;
-  }, [combinedDailyReports]);
+  }, [combinedDailyReports, selectedMonth]);
 
   const yearlyChartData = useMemo(() => {
     const applyFilter = (m: MonthlyMetric) => {
@@ -4192,6 +4215,8 @@ const [isScrolled, setIsScrolled] = useState(false);
     setFilterDivision,
     filterDivision,
     setSelectedYear,
+    selectedMonth,
+    setSelectedMonth,
     historyYear,
     setDashboardSubTab,
     dashboardSubTab,

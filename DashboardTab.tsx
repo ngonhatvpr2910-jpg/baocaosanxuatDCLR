@@ -17,6 +17,7 @@ export const DashboardTab = ({
   dashboardSubTab,
   filterDivision,
   selectedYear,
+  selectedMonth,
   formDate,
   totalMonthlyPlanUnits,
   kpis,
@@ -124,14 +125,14 @@ export const DashboardTab = ({
                 <div id="card-khsx" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-rose-600/5 rounded-full blur-xl group-hover:bg-rose-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-slate-400 font-black uppercase tracking-wider">KHSX THÁNG {parseInt(formDate.split("-")[1])}</span>
+                    <span className="text-sm text-slate-400 font-black uppercase tracking-wider">KHSX THÁNG {selectedMonth}</span>
                     <Layers className="w-4 h-4 text-slate-500" />
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold text-white tracking-tight">{totalMonthlyPlanUnits.totalUnconverted.toLocaleString()}</span>
+                    <span className="text-2xl font-bold text-white tracking-tight">{(totalMonthlyPlanUnits?.totalUnconverted || 0).toLocaleString()}</span>
                     <span className="text-xs text-slate-400 font-mono">SP</span>
                     <span className="text-sm text-slate-400 mx-1">/</span>
-                    <span className="text-2xl font-bold text-white tracking-tight">{totalMonthlyPlanUnits.total.toLocaleString()}</span>
+                    <span className="text-2xl font-bold text-white tracking-tight">{(totalMonthlyPlanUnits?.total || 0).toLocaleString()}</span>
                     <span className="text-xs text-slate-400 font-mono">SP quy đổi</span>
                   </div>
                   <div className="mt-2 text-xs flex items-center gap-1">
@@ -144,22 +145,22 @@ export const DashboardTab = ({
                 <div id="card-actual" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-600/5 rounded-full blur-xl group-hover:bg-cyan-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-cyan-400 font-black uppercase tracking-wider">LŨY KẾ THỰC HIỆN / TỔNG KẾ HOẠCH THÁNG {parseInt(formDate.split("-")[1])}</span>
+                    <span className="text-sm text-cyan-400 font-black uppercase tracking-wider">LŨY KẾ THỰC HIỆN / TỔNG KẾ HOẠCH THÁNG {selectedMonth}</span>
                     <TrendingUp className="w-4 h-4 text-cyan-400 animate-pulse" />
                   </div>
                   <div className="flex items-baseline gap-1">
                     <span className="text-2xl font-bold text-cyan-400 tracking-tight">
-                      {kpis.currentJulyEq.toLocaleString()}
+                      {(kpis?.currentJulyEq || 0).toLocaleString()}
                     </span>
                     <span className="text-xs text-slate-400 font-mono">SP</span>
                     <span className="text-sm text-slate-400 mx-1">/</span>
                     <span className="text-2xl font-bold text-slate-200 tracking-tight">
-                      {Math.round(totalMonthlyPlanUnits.total).toLocaleString()}
+                      {Math.round(totalMonthlyPlanUnits?.total || 0).toLocaleString()}
                     </span>
                     <span className="text-xs text-slate-400 font-mono ml-1">Kế hoạch</span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500 font-mono">
-                    (Thực tế chưa quy đổi: {kpis.currentJulyUnconverted.toLocaleString()} SP)
+                    (Thực tế chưa quy đổi: {(kpis?.currentJulyUnconverted || 0).toLocaleString()} SP)
                   </div>
                   <div className="mt-2 text-xs flex items-center justify-between">
                     <span className="text-slate-400 flex items-center gap-1">
@@ -187,8 +188,8 @@ export const DashboardTab = ({
                       {Number.isNaN(kpis.combinedBgRmaLp) ? 0 : kpis.combinedBgRmaLp}%
                     </div>
                     <div className="text-xs text-slate-400 mt-1 flex flex-col gap-0.5">
-                      <div>Sản lượng gộp: {kpis.combinedBgRmaEq.toLocaleString()} SP</div>
-                      <div>Tổng công gộp: {kpis.combinedBgRmaMandays.toLocaleString()} công</div>
+                      <div>Sản lượng gộp: {(kpis?.combinedBgRmaEq || 0).toLocaleString()} SP</div>
+                      <div>Tổng công gộp: {(kpis?.combinedBgRmaMandays || 0).toLocaleString()} công</div>
                     </div>
                     <div className="mt-3 pt-2 border-t border-slate-800/50">
                       <div className="flex justify-between items-center">
@@ -221,9 +222,9 @@ export const DashboardTab = ({
                     {isRevenueVisible ? (
                       <>
                         <div className="text-2xl font-bold text-emerald-400 tracking-tight">
-                          {kpis.actualRevenue.toLocaleString()}
+                          {(kpis?.actualRevenue || 0).toLocaleString()}
                         </div>
-                        <div className="text-xs text-slate-400 mt-1">KH: {kpis.plannedRevenue.toLocaleString()}</div>
+                        <div className="text-xs text-slate-400 mt-1">KH: {(kpis?.plannedRevenue || 0).toLocaleString()}</div>
                         <div className="mt-2 text-xs flex items-center justify-between">
                           <span className="text-slate-400">Tỉ lệ hoàn thành</span>
                           <span className="font-mono font-bold text-emerald-400">
@@ -332,7 +333,7 @@ export const DashboardTab = ({
                 <div id="card-efficiency-month" className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/60 hover:border-slate-700/80 transition relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-orange-600/5 rounded-full blur-xl group-hover:bg-orange-600/10 transition-all"></div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-orange-400 font-black uppercase tracking-wider">NSLĐ THÁNG {parseInt(formDate.split("-")[1])}</span>
+                    <span className="text-sm text-orange-400 font-black uppercase tracking-wider">NSLĐ THÁNG {selectedMonth}</span>
                     <Activity className="w-4 h-4 text-orange-400" />
                   </div>
                   <div className="flex items-baseline gap-1.5">
@@ -362,16 +363,16 @@ export const DashboardTab = ({
                     <Users className="w-4 h-4 text-indigo-400" />
                   </div>
                   <div className="text-2xl font-bold text-indigo-400 tracking-tight">
-                    {kpis.currentJulyMandays.toLocaleString()} <span className="text-sm font-normal text-slate-400">công</span>
+                    {(kpis?.currentJulyMandays || 0).toLocaleString()} <span className="text-sm font-normal text-slate-400">công</span>
                   </div>
                   <div className="mt-2 text-xs space-y-1">
                     <div className="flex justify-between items-center text-slate-400">
                       <span>• Chính thức</span>
-                      <span className="font-mono text-slate-300">{kpis.currentJulyOfficial.toLocaleString()}</span>
+                      <span className="font-mono text-slate-300">{(kpis?.currentJulyOfficial || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between items-center text-slate-400">
                       <span>• Thời vụ</span>
-                      <span className="font-mono text-slate-300">{kpis.currentJulySeasonal.toLocaleString()}</span>
+                      <span className="font-mono text-slate-300">{(kpis?.currentJulySeasonal || 0).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>

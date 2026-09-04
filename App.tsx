@@ -116,6 +116,8 @@ export default function App() {
     setFilterDivision,
     filterDivision,
     setSelectedYear,
+    selectedMonth,
+    setSelectedMonth,
     historyYear,
     setDashboardSubTab,
     dashboardSubTab,
@@ -528,7 +530,7 @@ export default function App() {
                   id="year-2025"
                   onClick={() => setSelectedYear(2025)}
                   className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    historyYear === 2025 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                    selectedYear === 2025 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
                   }`}
                 >
                   2025
@@ -537,11 +539,23 @@ export default function App() {
                   id="year-2026"
                   onClick={() => setSelectedYear(2026)}
                   className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    historyYear === 2026 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
+                    selectedYear === 2026 ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-white"
                   }`}
                 >
                   2026
                 </button>
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg p-1">
+                <span className="text-xs text-slate-400 font-black uppercase pl-2 hidden sm:inline">Tháng:</span>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="bg-transparent text-white text-xs font-semibold px-2 py-1 outline-none cursor-pointer"
+                >
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <option key={i+1} value={i+1} className="bg-slate-900 text-white">Tháng {i+1}</option>
+                  ))}
+                </select>
               </div>
             </div>
             
@@ -560,6 +574,7 @@ export default function App() {
       dashboardSubTab={dashboardSubTab}
       filterDivision={filterDivision}
       selectedYear={selectedYear}
+      selectedMonth={selectedMonth}
       formDate={formDate}
       totalMonthlyPlanUnits={totalMonthlyPlanUnits}
       kpis={kpis}

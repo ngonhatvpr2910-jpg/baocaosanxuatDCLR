@@ -146,7 +146,7 @@ export const HistoryDataTab = ({
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.actualProducts === null || Number.isNaN(m.actualProducts) ? "" : m.actualProducts.toLocaleString()} 
+                                      value={m.actualProducts == null || Number.isNaN(m.actualProducts) ? "" : m.actualProducts.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-emerald-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -184,7 +184,7 @@ export const HistoryDataTab = ({
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.equivalentProducts === null || Number.isNaN(m.equivalentProducts) ? "" : m.equivalentProducts.toLocaleString()} 
+                                      value={m.equivalentProducts == null || Number.isNaN(m.equivalentProducts) ? "" : m.equivalentProducts.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-blue-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -222,7 +222,7 @@ export const HistoryDataTab = ({
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.productionMandays === null || Number.isNaN(m.productionMandays) ? "" : m.productionMandays.toLocaleString()} 
+                                      value={m.productionMandays == null || Number.isNaN(m.productionMandays) ? "" : m.productionMandays.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-purple-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />

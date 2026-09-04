@@ -274,17 +274,17 @@ export const MonthlyPlanTab = ({
                         <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-850">
                           <div className="text-[10px] text-slate-400 uppercase font-mono font-semibold">{planLabel}</div>
                           <div className="text-lg font-black text-white mt-1 font-mono">
-                            {totalPlan.toLocaleString()} <span className="text-xs text-slate-400 font-normal font-sans">SP</span>
+                            {(totalPlan || 0).toLocaleString()} <span className="text-xs text-slate-400 font-normal font-sans">SP</span>
                           </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 font-mono">Quy đổi: {Math.round(totalPlanEq).toLocaleString()} SP</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 font-mono">Quy đổi: {Math.round(totalPlanEq || 0).toLocaleString()} SP</div>
                         </div>
 
                         <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-850">
                           <div className="text-[10px] text-slate-400 uppercase font-mono font-semibold">{actualLabel}</div>
                           <div className="text-lg font-black text-emerald-400 mt-1 font-mono">
-                            {totalActual.toLocaleString()} <span className="text-xs text-emerald-500 font-normal font-sans">SP</span>
+                            {(totalActual || 0).toLocaleString()} <span className="text-xs text-emerald-500 font-normal font-sans">SP</span>
                           </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 font-mono">Quy đổi: {Math.round(totalActualEq).toLocaleString()} SP</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 font-mono">Quy đổi: {Math.round(totalActualEq || 0).toLocaleString()} SP</div>
                         </div>
 
                         <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-850">
@@ -303,7 +303,7 @@ export const MonthlyPlanTab = ({
                         <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-850">
                           <div className="text-[10px] text-slate-400 uppercase font-mono font-semibold">Hao Hụt / Vượt Tiến Độ</div>
                           <div className={`text-lg font-black mt-1 font-mono ${diffSum >= 0 ? "text-emerald-400" : "text-rose-450"}`}>
-                            {diffSum >= 0 ? `+${diffSum.toLocaleString()}` : diffSum.toLocaleString()} <span className="text-xs font-normal font-sans text-slate-400">SP</span>
+                            {diffSum >= 0 ? `+${(diffSum || 0).toLocaleString()}` : (diffSum || 0).toLocaleString()} <span className="text-xs font-normal font-sans text-slate-400">SP</span>
                           </div>
                           <div className="text-[10px] text-slate-500 mt-0.5 font-sans">So với chỉ tiêu ban đầu</div>
                         </div>
@@ -358,21 +358,21 @@ export const MonthlyPlanTab = ({
                                 {item.product.factor}
                               </td>
                               <td className="py-3 px-4 text-right font-mono font-bold text-white">
-                                {item.planQty.toLocaleString()}
+                                {(item.planQty || 0).toLocaleString()}
                                 <div className="text-[10px] text-slate-500 font-normal font-sans">
-                                  QĐ: {Math.round(item.planEqQty).toLocaleString()}
+                                  QĐ: {Math.round(item.planEqQty || 0).toLocaleString()}
                                 </div>
                               </td>
                               <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
-                                {item.actualQty.toLocaleString()}
+                                {(item.actualQty || 0).toLocaleString()}
                                 <div className="text-[10px] text-slate-500 font-normal font-sans">
-                                  QĐ: {Math.round(item.actualEqQty).toLocaleString()}
+                                  QĐ: {Math.round(item.actualEqQty || 0).toLocaleString()}
                                 </div>
                               </td>
                               <td className={`py-3 px-4 text-right font-mono font-bold ${
                                 item.diffQty >= 0 ? "text-emerald-500" : "text-rose-400"
                               }`}>
-                                {item.diffQty >= 0 ? `+${item.diffQty.toLocaleString()}` : item.diffQty.toLocaleString()}
+                                {item.diffQty >= 0 ? `+${(item.diffQty || 0).toLocaleString()}` : (item.diffQty || 0).toLocaleString()}
                               </td>
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-3">
