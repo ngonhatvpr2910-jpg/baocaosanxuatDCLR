@@ -94,7 +94,7 @@ export const HistoryDataTab = ({
 
                           const isPast = historyYear < currentYear || (historyYear === currentYear && m.month < currentMonth);
                           const isCurrent = historyYear === currentYear && m.month === currentMonth;
-                          const isLocked = (isPast || isCurrent) && !(historyYear === 2026 && m.month === 7);
+                          const isLocked = (isPast || isCurrent) && !(historyYear === 2026 && (m.month === 7 || m.month === 8));
                           
                           // Auto report for past and current months
                           const isAutoReportMonth = isLocked;
@@ -118,7 +118,7 @@ export const HistoryDataTab = ({
                               <div className="relative flex items-center">
                                 <input 
                                   type="number" 
-                                  value={m.laborProductivityPercent === null || Number.isNaN(m.laborProductivityPercent) ? "" : m.laborProductivityPercent} 
+                                  value={m.laborProductivityPercent === null || Number.isNaN(Number(m.laborProductivityPercent)) ? "" : m.laborProductivityPercent} 
                                   onChange={(e) => updateHistoryMetric(historyYear, m.month, "laborProductivityPercent", e.target.value)}
                                   onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "laborProductivityPercent" })}
                                   onBlur={() => setFocusedField(null)}
@@ -146,7 +146,7 @@ export const HistoryDataTab = ({
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.actualProducts == null || Number.isNaN(m.actualProducts) ? "" : m.actualProducts.toLocaleString()} 
+                                      value={m.actualProducts == null || Number.isNaN(Number(m.actualProducts)) ? "" : m.actualProducts.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-emerald-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -156,13 +156,13 @@ export const HistoryDataTab = ({
                                   <>
                                     <input 
                                       type="number" 
-                                      value={m.actualProducts === null || Number.isNaN(m.actualProducts) ? "" : m.actualProducts} 
+                                      value={m.actualProducts === null || Number.isNaN(Number(m.actualProducts)) ? "" : m.actualProducts} 
                                       onChange={(e) => updateHistoryMetric(historyYear, m.month, "actualProducts", e.target.value)}
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "actualProducts" })}
                                       onBlur={() => setFocusedField(null)}
                                       disabled={isApLocked}
                                       className={`w-full bg-slate-900/40 border rounded p-1.5 pr-8 text-sm outline-none transition-all ${
-                                        isApLocked
+                                        isApLocked 
                                           ? "bg-slate-950/40 text-slate-500 border-slate-900/20 cursor-not-allowed"
                                           : "border-slate-700/50 text-white focus:border-orange-500/50 focus:bg-slate-900/60"
                                       }`} 
@@ -184,7 +184,7 @@ export const HistoryDataTab = ({
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.equivalentProducts == null || Number.isNaN(m.equivalentProducts) ? "" : m.equivalentProducts.toLocaleString()} 
+                                      value={m.equivalentProducts == null || Number.isNaN(Number(m.equivalentProducts)) ? "" : m.equivalentProducts.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-blue-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -194,7 +194,7 @@ export const HistoryDataTab = ({
                                   <>
                                     <input 
                                       type="number" 
-                                      value={m.equivalentProducts === null || Number.isNaN(m.equivalentProducts) ? "" : m.equivalentProducts} 
+                                      value={m.equivalentProducts === null || Number.isNaN(Number(m.equivalentProducts)) ? "" : m.equivalentProducts} 
                                       onChange={(e) => updateHistoryMetric(historyYear, m.month, "equivalentProducts", e.target.value)}
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "equivalentProducts" })}
                                       onBlur={() => setFocusedField(null)}
@@ -222,7 +222,7 @@ export const HistoryDataTab = ({
                                     <input 
                                       type="text" 
                                       readOnly
-                                      value={m.productionMandays == null || Number.isNaN(m.productionMandays) ? "" : m.productionMandays.toLocaleString()} 
+                                      value={m.productionMandays == null || Number.isNaN(Number(m.productionMandays)) ? "" : m.productionMandays.toLocaleString()} 
                                       className="w-full bg-slate-950/20 border border-slate-800/40 text-purple-400/80 rounded p-1.5 pr-14 text-sm cursor-not-allowed font-medium font-mono"
                                       placeholder="Tự động..."
                                     />
@@ -232,7 +232,7 @@ export const HistoryDataTab = ({
                                   <>
                                     <input 
                                       type="number" 
-                                      value={m.productionMandays === null || Number.isNaN(m.productionMandays) ? "" : m.productionMandays} 
+                                      value={m.productionMandays === null || Number.isNaN(Number(m.productionMandays)) ? "" : m.productionMandays} 
                                       onChange={(e) => updateHistoryMetric(historyYear, m.month, "productionMandays", e.target.value)}
                                       onFocus={() => setFocusedField({ month: m.month, year: historyYear, field: "productionMandays" })}
                                       onBlur={() => setFocusedField(null)}

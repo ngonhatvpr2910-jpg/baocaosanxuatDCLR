@@ -168,7 +168,7 @@ export const DashboardTab = ({
                       Tiến độ đạt tháng
                     </span>
                     <span className="font-mono font-bold text-cyan-400">
-                      {Number.isNaN(kpis.currentJulyCompletionRate) ? 0 : kpis.currentJulyCompletionRate}%
+                      {Number.isNaN(kpis.currentJulyCompletionRate) ? "0" : kpis.currentJulyCompletionRate}%
                     </span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500 font-mono italic">
@@ -185,7 +185,7 @@ export const DashboardTab = ({
                       <Users className="w-4 h-4 text-amber-500" />
                     </div>
                     <div className="text-2xl font-bold text-amber-400 tracking-tight">
-                      {Number.isNaN(kpis.combinedBgRmaLp) ? 0 : kpis.combinedBgRmaLp}%
+                      {Number.isNaN(kpis.combinedBgRmaLp) ? "0" : kpis.combinedBgRmaLp}%
                     </div>
                     <div className="text-xs text-slate-400 mt-1 flex flex-col gap-0.5">
                       <div>Sản lượng gộp: {(kpis?.combinedBgRmaEq || 0).toLocaleString()} SP</div>
@@ -311,10 +311,10 @@ export const DashboardTab = ({
                     <Award className="w-4 h-4 text-amber-400" />
                   </div>
                   <div className="flex items-baseline gap-1.5">
-                    <span className={`text-2xl font-bold tracking-tight ${kpis.avgLaborProductivity >= (Number.isNaN(kpis.yearTarget) ? 110 : kpis.yearTarget) ? "text-emerald-400" : "text-amber-400"}`}>
-                      {Number.isNaN(kpis.avgLaborProductivity) ? 0 : kpis.avgLaborProductivity}%
+                    <span className={`text-2xl font-bold tracking-tight ${kpis.avgLaborProductivity >= (Number.isNaN(Number(kpis.yearTarget)) ? 110 : kpis.yearTarget) ? "text-emerald-400" : "text-amber-400"}`}>
+                      {Number.isNaN(Number(kpis.avgLaborProductivity)) ? "0" : kpis.avgLaborProductivity}%
                     </span>
-                    <span className="text-xs text-slate-500 font-mono">/ mục tiêu {Number.isNaN(kpis.yearTarget) ? 110 : kpis.yearTarget}%</span>
+                    <span className="text-xs text-slate-500 font-mono">/ mục tiêu {Number.isNaN(Number(kpis.yearTarget)) ? "110" : kpis.yearTarget}%</span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500 font-mono italic">
                     Công thức: (Σ Sản phẩm Quy đổi / Σ Ngày công / 9.03) * 100 (Lũy kế)
@@ -322,9 +322,9 @@ export const DashboardTab = ({
                   <div className="mt-2 text-xs flex items-center justify-between text-slate-400">
                     <span>Trạng thái năm {selectedYear}</span>
                     <span className={`font-semibold font-mono text-[10px] uppercase border px-1.5 py-0.2 rounded ${
-                      kpis.avgLaborProductivity >= (Number.isNaN(kpis.yearTarget) ? 110 : kpis.yearTarget) ? "text-emerald-400 bg-emerald-950 border-emerald-800" : "text-amber-400 bg-amber-950 border-amber-800"
+                      kpis.avgLaborProductivity >= (Number.isNaN(Number(kpis.yearTarget)) ? 110 : kpis.yearTarget) ? "text-emerald-400 bg-emerald-950 border-emerald-800" : "text-amber-400 bg-amber-950 border-amber-800"
                     }`}>
-                      {kpis.avgLaborProductivity >= (Number.isNaN(kpis.yearTarget) ? 110 : kpis.yearTarget) ? "ĐẠT MỤC TIÊU" : "TIỆM CẬN MỤC TIÊU"}
+                      {kpis.avgLaborProductivity >= (Number.isNaN(Number(kpis.yearTarget)) ? 110 : kpis.yearTarget) ? "ĐẠT MỤC TIÊU" : "TIỆM CẬN MỤC TIÊU"}
                     </span>
                   </div>
                 </div>
@@ -337,10 +337,10 @@ export const DashboardTab = ({
                     <Activity className="w-4 h-4 text-orange-400" />
                   </div>
                   <div className="flex items-baseline gap-1.5">
-                    <span className={`text-2xl font-bold tracking-tight ${kpis.currentJulyProductivity >= (Number.isNaN(kpis.monthTarget) ? 110 : kpis.monthTarget) ? "text-emerald-400" : "text-orange-400"}`}>
-                      {Number.isNaN(kpis.currentJulyProductivity) ? 0 : kpis.currentJulyProductivity}%
+                    <span className={`text-2xl font-bold tracking-tight ${kpis.currentJulyProductivity >= (Number.isNaN(Number(kpis.monthTarget)) ? 110 : kpis.monthTarget) ? "text-emerald-400" : "text-orange-400"}`}>
+                      {Number.isNaN(Number(kpis.currentJulyProductivity)) ? "0" : kpis.currentJulyProductivity}%
                     </span>
-                    <span className="text-xs text-slate-500 font-mono">/ mục tiêu {Number.isNaN(kpis.monthTarget) ? 110 : kpis.monthTarget}%</span>
+                    <span className="text-xs text-slate-500 font-mono">/ mục tiêu {Number.isNaN(Number(kpis.monthTarget)) ? "110" : kpis.monthTarget}%</span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500 font-mono italic">
                     Công thức: (SP Quy đổi / Tổng Công / 9.03) * 100
@@ -397,13 +397,13 @@ export const DashboardTab = ({
                     />
                     <Legend />
                     <Bar isAnimationActive={false} yAxisId="left" dataKey="actualProducts" name="Sản lượng thực tế" fill="#94a3b8" radius={[2, 2, 0, 0]}>
-                      <LabelList dataKey="actualProducts" position="top" offset={3} fill="#94a3b8" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? v : ''} />
+                      <LabelList dataKey="actualProducts" position="top" offset={3} fill="#94a3b8" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? String(v) : ''} />
                     </Bar>
                     <Bar isAnimationActive={false} yAxisId="left" dataKey="equivalentProducts" name="Sản lượng quy đổi" fill="#3b82f6" radius={[2, 2, 0, 0]}>
-                      <LabelList dataKey="equivalentProducts" position="top" offset={3} fill="#3b82f6" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? v : ''} />
+                      <LabelList dataKey="equivalentProducts" position="top" offset={3} fill="#3b82f6" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? String(v) : ''} />
                     </Bar>
                     <Line isAnimationActive={false} yAxisId="right" type="monotone" dataKey="laborProductivityPercent" name="Năng Suất (%)" stroke="#f97316" strokeWidth={2}>
-                      <LabelList dataKey="laborProductivityPercent" position="top" offset={10} fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${v}%` : ''} />
+                      <LabelList dataKey="laborProductivityPercent" position="top" offset={10} fill="#f97316" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                     </Line>
                   </ComposedChart>
                   </ResponsiveContainer>
@@ -441,7 +441,7 @@ export const DashboardTab = ({
                     />
                     <Legend wrapperStyle={{ fontSize: "14px", fontWeight: "medium" }} />
                     <Bar isAnimationActive={false} dataKey="value" name="NSLĐ (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="value" position="top" offset={5} fill="#10b981" fontSize={13} fontWeight="bold" formatter={(v: number) => v > 0 ? `${v}%` : ''} />
+                      <LabelList dataKey="value" position="top" offset={5} fill="#10b981" fontSize={13} fontWeight="bold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v)) && Number(v) > 0) ? `${v}%` : ''} />
                     </Bar>
                   </BarChart>
                   </ResponsiveContainer>
@@ -518,7 +518,7 @@ export const DashboardTab = ({
                         </div>
                         <div className="space-y-0.5 text-right">
                           <span className="text-slate-400 block text-[10px] uppercase font-mono">NSLĐ Ca</span>
-                          <span className={`font-mono font-bold ${Number(log.laborProductivityPercent) >= (Number.isNaN(kpis.monthTarget) ? 110 : kpis.monthTarget) ? "text-emerald-400" : "text-amber-400"}`}>
+                          <span className={`font-mono font-bold ${Number(log.laborProductivityPercent) >= (Number.isNaN(Number(kpis.monthTarget)) ? 110 : kpis.monthTarget) ? "text-emerald-400" : "text-amber-400"}`}>
                             {(Number(log.laborProductivityPercent) || 0).toFixed(1)}%
                           </span>
                         </div>
@@ -587,7 +587,7 @@ export const DashboardTab = ({
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
                         <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={35}>
-                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
+                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -616,7 +616,7 @@ export const DashboardTab = ({
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
                         <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={18}>
-                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
+                          <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -635,7 +635,7 @@ export const DashboardTab = ({
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
                         <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
-                          <LabelList dataKey="errorRate" position="top" fill="#fbbf24" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${v}%` : ''} />
+                          <LabelList dataKey="errorRate" position="top" fill="#fbbf24" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                         </Line>
                       </LineChart>
                     </ResponsiveContainer>
@@ -652,7 +652,7 @@ export const DashboardTab = ({
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
                         <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
-                          <LabelList dataKey="errorRate" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${v}%` : ''} />
+                          <LabelList dataKey="errorRate" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                         </Line>
                       </LineChart>
                     </ResponsiveContainer>
@@ -705,7 +705,7 @@ export const DashboardTab = ({
                             <td key={`tb2-wv-${w.week}`} className="py-1 px-1 border-l border-slate-850">
                               <input 
                                 type="number" 
-                                value={w.scrapCost === null || Number.isNaN(w.scrapCost) ? "" : w.scrapCost}
+                                value={w.scrapCost === null || Number.isNaN(Number(w.scrapCost)) ? "" : w.scrapCost}
                                 onChange={(e) => updateScrapMetric("weekly", w.week, e.target.value)}
                                 className="w-full min-w-[70px] bg-transparent text-right outline-none p-1 rounded font-semibold text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-slate-800/50 focus:bg-slate-800 focus:text-rose-400"
                                 placeholder="—"
@@ -742,7 +742,7 @@ export const DashboardTab = ({
                               <input 
                                 type="number" 
                                 step="0.1"
-                                value={w.errorRate === null || Number.isNaN(w.errorRate) ? "" : w.errorRate}
+                                value={w.errorRate === null || Number.isNaN(Number(w.errorRate)) ? "" : w.errorRate}
                                 onChange={(e) => updateDclrErrorMetric("weekly", w.week, e.target.value)}
                                 className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] hover:bg-slate-800/50 focus:bg-slate-800 ${
                                   w.errorRate === null ? "text-slate-500" :
@@ -803,7 +803,7 @@ export const DashboardTab = ({
                         />
                         <Legend />
                         <Bar isAnimationActive={false} dataKey="productivity" name="NSLĐ (%)" fill="#10b981" radius={[2, 2, 0, 0]}>
-                          <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${v}%` : ''} />
+                          <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                         </Bar>
                       </BarChart>
                     ) : chartTimeDimension === "yearly" ? (
@@ -816,7 +816,7 @@ export const DashboardTab = ({
                           formatter={(value: any) => [`${value}%`, "Hiệu suất lao động"]}
                         />
                         <Bar isAnimationActive={false} dataKey="productivity" name="Hiệu suất lao động (%)" fill="#10b981" radius={[4, 4, 0, 0]}>
-                          <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => (typeof v === 'number' && !Number.isNaN(v)) ? `${v}%` : ''} />
+                          <LabelList dataKey="productivity" position="top" fill="#10b981" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                         </Bar>
                       </BarChart>
                     ) : (

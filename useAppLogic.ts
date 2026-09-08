@@ -1301,7 +1301,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       const currentMonth = now.getMonth() + 1;
       const isPast = m.year < currentYear || (m.year === currentYear && m.month < currentMonth);
       const isCurrent = m.year === currentYear && m.month === currentMonth;
-      const isLocked = isPast || isCurrent;
+      const isLocked = (isPast || isCurrent) && !(m.year === 2026 && (m.month === 7 || m.month === 8));
       const isAutoReportMonth = isLocked;
 
       // Get logs for this month
@@ -1358,7 +1358,7 @@ const [isScrolled, setIsScrolled] = useState(false);
           const finalActual = addedActualQty;
           const finalMandays = addedWorkdays;
 
-          const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(finalEq) && !Number.isNaN(finalMandays))
+          const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(Number(finalEq)) && !Number.isNaN(Number(finalMandays)))
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
             : (m.laborProductivityPercent || 100);
 
@@ -1447,19 +1447,24 @@ const [isScrolled, setIsScrolled] = useState(false);
 
   const getProductionMonthFromWeek = (weekStr: string): number => {
     const weekNum = parseInt(weekStr.replace("W", ""), 10);
-    // Standard production calendar mapping
-    if (weekNum <= 4) return 1;
-    if (weekNum <= 8) return 2;
-    if (weekNum <= 13) return 3;
-    if (weekNum <= 17) return 4;
-    if (weekNum <= 21) return 5;
-    if (weekNum <= 26) return 6;
-    if (weekNum <= 30) return 7; // W27-W30 are July
-    if (weekNum <= 34) return 8;
-    if (weekNum <= 39) return 9;
-    if (weekNum <= 43) return 10;
-    if (weekNum <= 47) return 11;
-    return 12;
+    let w1Start = new Date(selectedYear, 0, 1);
+    while (w1Start.getDay() !== 5) {
+      w1Start.setDate(w1Start.getDate() - 1);
+    }
+    
+    let weekStart = new Date(w1Start);
+    weekStart.setDate(w1Start.getDate() + (weekNum - 1) * 7);
+    
+    const monthCounts: Record<number, number> = {};
+    for (let d = 0; d < 7; d++) {
+      let curr = new Date(weekStart);
+      curr.setDate(weekStart.getDate() + d);
+      let m = curr.getMonth() + 1;
+      monthCounts[m] = (monthCounts[m] || 0) + 1;
+    }
+    
+    const majorityMonth = Object.keys(monthCounts).reduce((a, b) => monthCounts[Number(a)] > monthCounts[Number(b)] ? a : b);
+    return Number(majorityMonth);
   };
 
   const displayMonthlyScrap = useMemo(() => {
@@ -1805,7 +1810,7 @@ const [isScrolled, setIsScrolled] = useState(false);
           const finalActual = addedActualQty;
           const finalMandays = addedWorkdays;
 
-          const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(finalEq) && !Number.isNaN(finalMandays))
+          const calculatedProductivity = (finalMandays > 0 && !Number.isNaN(Number(finalEq)) && !Number.isNaN(Number(finalMandays)))
             ? Number(((finalEq / finalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
             : (m.laborProductivityPercent || 100);
 
@@ -1882,6 +1887,25 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, [selectedYear, filterDivision, metrics2025, processedMetrics2026, productionLogs, formDate, formAggregates, formWorkersCount, gasDailyReports, assemblyDailyReports, combinedDailyReports]);
 
   const nsldComparisonData = useMemo(() => {
+    const getMonthFromDateString = (dStr: string): number => {
+      const parts = dStr.split("-");
+      if (parts.length < 2) return 0;
+      const mStr = parts[1].toLowerCase();
+      if (mStr.startsWith("jan")) return 1;
+      if (mStr.startsWith("feb")) return 2;
+      if (mStr.startsWith("mar")) return 3;
+      if (mStr.startsWith("apr")) return 4;
+      if (mStr.startsWith("may")) return 5;
+      if (mStr.startsWith("jun")) return 6;
+      if (mStr.startsWith("jul")) return 7;
+      if (mStr.startsWith("aug")) return 8;
+      if (mStr.startsWith("sep")) return 9;
+      if (mStr.startsWith("oct")) return 10;
+      if (mStr.startsWith("nov")) return 11;
+      if (mStr.startsWith("dec")) return 12;
+      return parseInt(parts[1], 10) || 0; // Fallback if it's "2026-07-01"
+    };
+
     const getValues = (item: any, gasRow: any) => {
       let totalCong = 0;
       let totalOutput = 0;
@@ -1942,7 +1966,14 @@ const [isScrolled, setIsScrolled] = useState(false);
 
     if (laborViewMode === "daily") {
       const historicalDaily = assemblyDailyReports
-        .filter((r) => !r.isSummary && r.date.startsWith(selectedYear))
+        .filter((r) => {
+          if (r.isSummary || !r.date.startsWith(selectedYear)) return false;
+          if (selectedYear === "2026") {
+            const m = getMonthFromDateString(r.date);
+            if (m >= 7) return false;
+          }
+          return true;
+        })
         .map((item) => {
           const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
           const { totalCong, totalOutput } = getValues(item, gasRow);
@@ -1959,22 +1990,31 @@ const [isScrolled, setIsScrolled] = useState(false);
       });
       
       newDaily.sort((a, b) => new Date(a.rawDate).getTime() - new Date(b.rawDate).getTime());
-
       return [...historicalDaily, ...newDaily.map(d => ({ name: d.name, value: d.value }))];
     }
 
     if (laborViewMode === "weekly") {
       let historicalWeekly: any[] = [];
-      if (selectedYear === "2025") {
-         historicalWeekly = assemblyDailyReports
-          .filter((r) => r.isSummary && r.date.includes("W"))
-          .map((item) => {
-            const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
-            const { totalCong, totalOutput } = getValues(item, gasRow);
-            const value = totalCong > 0 ? Number(((totalOutput / totalCong) / 9.03 * 100).toFixed(1)) : 0;
-            return { name: item.date, value };
-          });
-      }
+      historicalWeekly = assemblyDailyReports
+        .filter((r) => {
+           if (!r.isSummary || !r.date.includes("W") || !r.date.startsWith(selectedYear)) return false;
+           if (selectedYear === "2026") {
+             // W26 is roughly the end of June. We can check getMonthFromDateString if r.date has it.
+             // But r.date for summary is like "2026-W01".
+             const weekMatch = r.date.match(/W(\d+)/);
+             if (weekMatch) {
+               const weekNum = parseInt(weekMatch[1], 10);
+               if (weekNum > 26) return false; // Weeks > 26 fall into July onwards
+             }
+           }
+           return true;
+        })
+        .map((item) => {
+          const gasRow = gasDailyReports.find(g => g.date === item.date) || { congGasStove: 0, congSeasonal: 0, congRma: 0, outputStove: 0, outputRma: 0 } as any;
+          const { totalCong, totalOutput } = getValues(item, gasRow);
+          const value = totalCong > 0 ? Number(((totalOutput / totalCong) / 9.03 * 100).toFixed(1)) : 0;
+          return { name: item.date, value };
+        });
 
       // Group new daily logs into weeks
       const allWeeks = getYearWeeks(parseInt(selectedYear));
@@ -2002,10 +2042,34 @@ const [isScrolled, setIsScrolled] = useState(false);
     }
 
     if (laborViewMode === "monthly") {
-      return displayMetrics.filter(m => m.laborProductivityPercent !== null).map(m => ({
-        name: `Tháng ${m.month}`,
-        value: m.laborProductivityPercent || 0
-      }));
+      return displayMetrics.filter(m => m.laborProductivityPercent !== null).map(m => {
+        let value = m.laborProductivityPercent || 0;
+        
+        // Bắt đầu từ tháng 7/2026, lấy dữ liệu riêng theo nhật ký ca (productionLogs)
+        if (m.year === 2026 && m.month >= 7) {
+          const monthPrefix = `${m.year}-${String(m.month).padStart(2, '0')}`;
+          let totalEq = 0;
+          let totalMandays = 0;
+          
+          Object.entries(logsByDate).forEach(([date, data]) => {
+            if (date.startsWith(monthPrefix)) {
+              totalEq += data.totalEq;
+              totalMandays += data.mandays;
+            }
+          });
+          
+          if (totalMandays > 0) {
+            value = Number(((totalEq / totalMandays) / 9.03 * 100).toFixed(1));
+          } else {
+            value = 0;
+          }
+        }
+        
+        return {
+          name: `Tháng ${m.month}`,
+          value
+        };
+      });
     }
 
     // Yearly
@@ -2688,7 +2752,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       });
       const totalWorkers = Object.values(shiftLineWorkers).reduce((sum, w) => sum + (w || 0), 0);
 
-      const avgProductivity = (totalWorkers > 0 && !Number.isNaN(totalEquivalent) && !Number.isNaN(totalWorkers))
+      const avgProductivity = (totalWorkers > 0 && !Number.isNaN(Number(totalEquivalent)) && !Number.isNaN(Number(totalWorkers)))
         ? Number(((totalEquivalent / totalWorkers) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
         : 0;
 
