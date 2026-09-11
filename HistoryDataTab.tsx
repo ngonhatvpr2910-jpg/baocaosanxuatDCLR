@@ -26,8 +26,14 @@ export const HistoryDataTab = ({
   setSelectedTargetMonth,
   monthlyTargets,
   updateMonthlyTarget,
-  setMonthlyTargets
+  setMonthlyTargets,
+  productionLogs = [],
+  syncHistoryFromLogs
 }: any) => {
+  const currentYearLogsCount = useMemo(() => {
+    return (productionLogs || []).filter((l: any) => l.date && l.date.startsWith(`${historyYear}-`)).length;
+  }, [productionLogs, historyYear]);
+
   return (
     <motion.div
               key="history-data"
@@ -42,36 +48,49 @@ export const HistoryDataTab = ({
                     <div className="space-y-1">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
                       <History className="w-5 h-5 text-orange-400" />
-                      Mục tiêu sản xuất năm 2026 & Dữ liệu Lịch sử
+                      Mục tiêu sản xuất năm {historyYear} & Dữ liệu Lịch sử
                     </h3>
                     <p className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5">
                       <span>Dữ liệu kế hoạch & thực tế cho từng tháng.</span>
-                      <span className="inline-flex items-center gap-1 text-amber-500 font-medium">
-                        <Lock className="w-3 h-3" /> Các tháng đã qua và hiện tại được khóa để bảo vệ dữ liệu báo cáo.
+                      <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Tự động đồng bộ từ Nhật ký ca ({currentYearLogsCount} bản ghi năm {historyYear}).
                       </span>
                     </p>
                   </div>
-                  <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800 self-start">
-                    <button
-                      onClick={() => setHistoryYear(2025)}
-                      className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        historyYear === 2025
-                          ? "bg-orange-600 text-white shadow-sm"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                      }`}
-                    >
-                      Năm 2025
-                    </button>
-                    <button
-                      onClick={() => setHistoryYear(2026)}
-                      className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        historyYear === 2026
-                          ? "bg-orange-600 text-white shadow-sm"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                      }`}
-                    >
-                      Năm 2026
-                    </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {syncHistoryFromLogs && (
+                      <button
+                        type="button"
+                        onClick={syncHistoryFromLogs}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-950/40 cursor-pointer"
+                        title="Đồng bộ lại toàn bộ số liệu lịch sử từ các bản ghi nhật ký ca"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Đồng bộ từ Nhật ký ca
+                      </button>
+                    )}
+                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800 self-start">
+                      <button
+                        onClick={() => setHistoryYear(2025)}
+                        className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                          historyYear === 2025
+                            ? "bg-orange-600 text-white shadow-sm"
+                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                      >
+                        Năm 2025
+                      </button>
+                      <button
+                        onClick={() => setHistoryYear(2026)}
+                        className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                          historyYear === 2026
+                            ? "bg-orange-600 text-white shadow-sm"
+                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                      >
+                        Năm 2026
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -104,12 +123,21 @@ export const HistoryDataTab = ({
                           const isEpLocked = isLocked;
                           const isPmLocked = isLocked;
 
+                          const monthLogsCount = (productionLogs || []).filter(
+                            (l: any) => l.date && l.date.startsWith(`${historyYear}-${String(m.month).padStart(2, '0')}`)
+                          ).length;
+
                           return (
                             <tr key={`history-row-${m.month}-${historyYear}`} className={`hover:bg-slate-900/50 transition-colors ${isLocked ? "bg-slate-950/20" : ""}`}>
                             <td className="py-2 px-2 text-sm font-medium text-slate-300">
-                              <div className="flex items-center gap-1.5">
-                                Tháng {m.month}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>Tháng {m.month}</span>
                                 {isLocked && <Lock className="w-2.5 h-2.5 text-slate-500" />}
+                                {monthLogsCount > 0 && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-800 text-emerald-400 font-semibold" title={`Đã đồng bộ ${monthLogsCount} bản ghi nhật ký ca`}>
+                                    {monthLogsCount} ca
+                                  </span>
+                                )}
                               </div>
                             </td>
                             

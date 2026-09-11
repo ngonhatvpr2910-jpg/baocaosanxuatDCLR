@@ -173,6 +173,15 @@ export function getShiftSlots(shift: string): string[] {
   ];
 }
 
+export function isValidHourlySlot(slot: string): boolean {
+  if (!slot || typeof slot !== "string") return false;
+  const s = slot.trim().toUpperCase();
+  if (s.startsWith("CA ") || s.startsWith("CA_") || s.includes("08:00") || s.includes("17:00") || s.includes("CA HC") || s.includes("CA 1") || s.includes("CA 2") || s.includes("CA 3")) {
+    return false;
+  }
+  return /\d+\s*H/i.test(s) && (s.includes("-") || s.includes("–"));
+}
+
 export function formatSlotLabel(slot: string): string {
   let clean = slot.trim().toUpperCase().replace(/:00/g, "").replace(/\s+/g, "");
   const match = clean.match(/^(\d+)(H|H-)?-?(\d+)(H)?$/);

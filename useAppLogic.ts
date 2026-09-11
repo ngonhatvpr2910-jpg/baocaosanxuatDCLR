@@ -1,14 +1,45 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  MonthlyMetric, ProductDefinition, ProductionLine, ProductionLog, ProductGroup, WeeklyAttendance, MonthlyScrapReport, WeeklyScrapReport, WeeklyDclreErrorRate, MonthlyDclreErrorRate, DailyReportRowGas, DailyReportRowAssembly, CombinedDailyReportRow
+  MonthlyMetric, ProductDefinition, ProductionLine, ProductionLog, ProductGroup, WeeklyAttendance, MonthlyScrapReport, WeeklyScrapReport, WeeklyDclreErrorRate, MonthlyDclreErrorRate, DailyReportRowGas, DailyReportRowAssembly, CombinedDailyReportRow, Worker, AttendanceRecord, WorkerDivision, WorkerType
 } from './types';
 import {
-  INDUSTRIAL_STANDARDS, SUNHOUSE_PRODUCTS, SUNHOUSE_LINES, HISTORICAL_2025, HISTORICAL_2026, CURRENT_STATE_SUMMARY, INITIAL_PRODUCTION_LOGS, WEEKLY_ATTENDANCE, MONTHLY_SCRAP_REPORT, WEEKLY_SCRAP_REPORT, WEEKLY_DCLR_ERROR_RATE, MONTHLY_DCLR_ERROR_RATE, INITIAL_GAS_DAILY_REPORTS, INITIAL_ASSEMBLY_DAILY_REPORTS
+  INDUSTRIAL_STANDARDS, SUNHOUSE_PRODUCTS, SUNHOUSE_LINES, HISTORICAL_2025, HISTORICAL_2026, CURRENT_STATE_SUMMARY, INITIAL_PRODUCTION_LOGS, WEEKLY_ATTENDANCE, MONTHLY_SCRAP_REPORT, WEEKLY_SCRAP_REPORT, WEEKLY_DCLR_ERROR_RATE, MONTHLY_DCLR_ERROR_RATE, INITIAL_GAS_DAILY_REPORTS, INITIAL_ASSEMBLY_DAILY_REPORTS, INITIAL_WORKERS, INITIAL_ATTENDANCE
 } from './data';
-import { getFridayToThursdayWeeksForMonth, getStandardYearWeeks, getYearWeeks, getWeeksInMonth, getShiftSlots, formatSlotLabel, getProductModelCode, FormModelItem } from './appUtils';
+import { getFridayToThursdayWeeksForMonth, getStandardYearWeeks, getYearWeeks, getWeeksInMonth, getShiftSlots, formatSlotLabel, getProductModelCode, FormModelItem, isValidHourlySlot } from './appUtils';
+import * as storage from './storage';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 export const useAppLogic = () => {
+  // Trạng thái đồng bộ Supabase Cloud
+  const isLoadedRef = useRef(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local' | 'error'>(
+    isSupabaseConfigured ? 'syncing' : 'local'
+  );
+  const [syncMessage, setSyncMessage] = useState<string>(
+    isSupabaseConfigured ? 'Đang kết nối Supabase Cloud...' : 'Chế độ Local (Chưa cấu hình Supabase)'
+  );
+
+  const [workers, setWorkers] = useState<Worker[]>(() => {
+    const saved = localStorage.getItem("sunhouse_workers");
+    return saved ? JSON.parse(saved) : INITIAL_WORKERS;
+  });
+  
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>(() => {
+    const saved = localStorage.getItem("sunhouse_attendance_logs");
+    return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sunhouse_workers", JSON.stringify(workers));
+  }, [workers]);
+
+  useEffect(() => {
+    localStorage.setItem("sunhouse_attendance_logs", JSON.stringify(attendanceLogs));
+  }, [attendanceLogs]);
+
+
 const [isScrolled, setIsScrolled] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
   const lastScrollY = useRef(0);
@@ -35,7 +66,7 @@ const [isScrolled, setIsScrolled] = useState(false);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [laborViewMode, setLaborViewMode] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
   const [filterDivision, setFilterDivision] = useState<ProductGroup | "ALL">("ALL");
@@ -54,7 +85,7 @@ const [isScrolled, setIsScrolled] = useState(false);
   const [dashboardSubTab, setDashboardSubTab] = useState<"standard" | "scrap-quality" | "charts">("standard");
   const [scrapQualityMonth, setScrapQualityMonth] = useState<number>(new Date().getMonth() + 1);
   const [chartTimeDimension, setChartTimeDimension] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
-  const [historyYear, setHistoryYear] = useState<2025 | 2026>(2025);
+  const [historyYear, setHistoryYear] = useState<2025 | 2026>(2026);
   const [focusedField, setFocusedField] = useState<{ month: number; year: number; field: string } | null>(null);
   const [executionFilterType, setExecutionFilterType] = useState<"MONTH" | "WEEK" | "DAY">("MONTH");
   const [executionFilterWeek, setExecutionFilterWeek] = useState<number>(1);
@@ -276,7 +307,8 @@ const [isScrolled, setIsScrolled] = useState(false);
   });
 
   useEffect(() => {
-    localStorage.setItem("sunhouse_monthly_plan_v2", JSON.stringify(monthlyPlan));
+    if (!isLoadedRef.current) return;
+    storage.saveMonthlyPlan(monthlyPlan);
   }, [monthlyPlan]);
 
   const [productionLogs, setProductionLogs] = useState<ProductionLog[]>(() => {
@@ -304,6 +336,7 @@ const [isScrolled, setIsScrolled] = useState(false);
   });
 
   useEffect(() => {
+    if (!isLoadedRef.current) return;
     localStorage.setItem("sunhouse_production_logs_v2", JSON.stringify(productionLogs));
   }, [productionLogs]);
 
@@ -399,8 +432,36 @@ const [isScrolled, setIsScrolled] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string>("");
 
-  // Điều khiển Form thêm nhật ký mới (Hỗ trợ Nhiều Model & Chia Khung giờ 2h/lần)
+  // Helpers lấy bản nháp chưa lưu (Draft) từ LocalStorage
+  const getInitialActiveDraft = (): storage.FormDraftData | null => {
+    try {
+      const raw = localStorage.getItem("sunhouse_last_active_form_draft");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  const getDraftForDateAndShift = (date: string, shift: string): storage.FormDraftData | null => {
+    try {
+      const key = `sunhouse_draft_${date}_${shift}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.date === date && parsed.shift === shift) return parsed;
+      }
+      const active = getInitialActiveDraft();
+      if (active && active.date === date && active.shift === shift) return active;
+    } catch (e) {}
+    return null;
+  };
+
+  // Điều khiển Form thêm nhật ký mới (Hỗ trợ Nhiều Model & Chia Khung giờ 1h-2h/lần)
   const [formDate, setFormDate] = useState<string>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft && draft.date) return draft.date;
     const today = new Date();
     // Use local time instead of UTC to avoid timezone issues where it might be one day behind
     return today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, '0') + "-" + String(today.getDate()).padStart(2, '0');
@@ -429,10 +490,90 @@ const [isScrolled, setIsScrolled] = useState(false);
     }
   }, [formDate]);
   const [formLineId, setFormLineId] = useState<string>(SUNHOUSE_LINES[0].id);
-  const [formShift, setFormShift] = useState<"Ca HC (08:00 - 17:00)" | "Ca HC (08:00 - 19h)" | "Ca HC (08:00 - 20h00)">("Ca HC (08:00 - 17:00)");
-  const [formSlots, setFormSlots] = useState<string[]>(() => getShiftSlots("Ca HC (08:00 - 17:00)"));
+  const [formShift, setFormShift] = useState<"Ca HC (08:00 - 17:00)" | "Ca HC (08:00 - 19h)" | "Ca HC (08:00 - 20h00)">(() => {
+    const draft = getInitialActiveDraft();
+    if (draft && draft.shift) return draft.shift as any;
+    return "Ca HC (08:00 - 17:00)";
+  });
+  const [formSlots, setFormSlots] = useState<string[]>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft && Array.isArray(draft.slots) && draft.slots.length > 0) {
+      const valid = draft.slots.filter(isValidHourlySlot);
+      if (valid.length > 0) return valid;
+    }
+    return getShiftSlots("Ca HC (08:00 - 17:00)");
+  });
+  const formSlotsRef = useRef(formSlots);
+  formSlotsRef.current = formSlots;
   const [newSlotInput, setNewSlotInput] = useState<string>("20H - 21H");
   const [scanInput, setScanInput] = useState<string>("");
+
+  // Trạng thái Toast thông báo lỗi Supabase (hiển thị Toast đỏ chứa error.message)
+  const [toastError, setToastError] = useState<string | null>(null);
+  const showToastError = useCallback((msg: string) => {
+    if (!msg) return;
+    // Bỏ qua lỗi gián đoạn mạng hoặc timeout tạm thời để tránh làm phiền người dùng khi dữ liệu đã lưu an toàn vào LocalStorage
+    const isTransient =
+      msg.includes('Failed to fetch') ||
+      msg.includes('NetworkError') ||
+      msg.includes('Load failed') ||
+      msg.includes('timeout') ||
+      msg.includes('57014') ||
+      msg.includes('AbortError');
+
+    if (isTransient) {
+      console.warn('[Network] Kết nối máy chủ tạm thời gián đoạn. Dữ liệu đã được lưu an toàn tại máy cục bộ.');
+      return;
+    }
+
+    setToastError(msg);
+    setTimeout(() => {
+      setToastError((prev) => (prev === msg ? null : prev));
+    }, 8000);
+  }, []);
+
+  // Trạng thái Toast thông báo thành công (ví dụ: đã lưu lên Supabase khi nhấn Enter)
+  const [toastSuccess, setToastSuccess] = useState<string | null>(null);
+  const showToastSuccess = useCallback((msg: string) => {
+    if (!msg) return;
+    setToastSuccess(msg);
+    setTimeout(() => {
+      setToastSuccess((prev) => (prev === msg ? null : prev));
+    }, 3000);
+  }, []);
+
+  // Vệ sinh dữ liệu một lần khi khởi động: Loại bỏ vĩnh viễn các slot lỗi (như "Ca HC (08:00 - 17:00)")
+  useEffect(() => {
+    setFormSlots((prev) => {
+      const cleaned = prev.filter(isValidHourlySlot);
+      if (cleaned.length === 0) return getShiftSlots("Ca HC (08:00 - 17:00)");
+      return cleaned.length !== prev.length ? cleaned : prev;
+    });
+
+    setFormModelItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const cleanedHourly: Record<string, number> = {};
+        let itemChanged = false;
+        Object.entries(item.hourlyActuals || {}).forEach(([k, v]) => {
+          if (isValidHourlySlot(k)) {
+            cleanedHourly[k] = Number(v) || 0;
+          } else {
+            itemChanged = true;
+          }
+        });
+        if (itemChanged) {
+          changed = true;
+          return { ...item, hourlyActuals: cleanedHourly };
+        }
+        return item;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  // Debounce ref cho cập nhật khung giờ để tránh spam mạng và khóa hàng trên Supabase
+  const hourlySyncDebounceRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   interface ScannedImei {
     id: string;
@@ -718,10 +859,32 @@ const [isScrolled, setIsScrolled] = useState(false);
       hourlyActuals: { ...existingActuals }
     };
     const currentQty = parseInt(updatedItems[itemIndex].hourlyActuals[currentSlot] as any) || 0;
-    updatedItems[itemIndex].hourlyActuals[currentSlot] = currentQty + 1;
+    const updatedQty = currentQty + 1;
+    updatedItems[itemIndex].hourlyActuals[currentSlot] = updatedQty;
     
     setFormModelItems(updatedItems);
     
+    // ĐỒNG BỘ SUPABASE KHI QUÉT MÃ IMEI:
+    const targetProd = products.find(p => p.id === targetModelId);
+    const modelCode = targetProd ? (getProductModelCode(targetProd.name) || targetProd.code || targetProd.id) : targetModelId;
+    const selectedDept = targetProd?.group || (filterDivision !== "ALL" ? filterDivision : "RO");
+    const timeSlot = currentSlot.replace(/\s+/g, ''); // '8H-9H'
+
+    storage.upsertHourlyProductionLog({
+      work_date: formDate,
+      department: selectedDept,
+      product_code: modelCode,
+      shift: timeSlot,
+      quantity: updatedQty,
+      status: 'OK',
+      productId: targetProd?.id || targetModelId,
+      productName: targetProd?.name
+    }).then(({ error }) => {
+      if (error) {
+        showToastError(error.message || 'Lỗi đồng bộ Supabase khi quét mã');
+      }
+    });
+
     const newImei: ScannedImei = {
       id: `imei-${Date.now()}-${Math.random().toString(36).substring(2,9)}`,
       imei: val,
@@ -798,83 +961,107 @@ const [isScrolled, setIsScrolled] = useState(false);
     }
   };
 
-  const [formOfficialWorkersRO, setFormOfficialWorkersRO] = useState<{ [slotName: string]: number }>({
-    "8H - 9H": 0,
-    "9H - 10H": 0,
-    "10H - 11H": 0,
-    "11H - 12H": 0,
-    "13H - 14H": 0,
-    "14H - 15H": 0,
-    "15H - 16H": 0,
-    "16H - 17H": 0,
-    "17H - 18H": 0,
-    "18H - 19H": 0,
-    "19H - 20H": 0,
+  const [formOfficialWorkersRO, setFormOfficialWorkersRO] = useState<{ [slotName: string]: number }>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft?.officialRO && Object.keys(draft.officialRO).length > 0) return draft.officialRO;
+    return {
+      "8H - 9H": 0,
+      "9H - 10H": 0,
+      "10H - 11H": 0,
+      "11H - 12H": 0,
+      "13H - 14H": 0,
+      "14H - 15H": 0,
+      "15H - 16H": 0,
+      "16H - 17H": 0,
+      "17H - 18H": 0,
+      "18H - 19H": 0,
+      "19H - 20H": 0,
+    };
   });
-  const [formSeasonalWorkersRO, setFormSeasonalWorkersRO] = useState<{ [slotName: string]: number }>({
-    "8H - 9H": 0,
-    "9H - 10H": 0,
-    "10H - 11H": 0,
-    "11H - 12H": 0,
-    "13H - 14H": 0,
-    "14H - 15H": 0,
-    "15H - 16H": 0,
-    "16H - 17H": 0,
-    "17H - 18H": 0,
-    "18H - 19H": 0,
-    "19H - 20H": 0,
+  const [formSeasonalWorkersRO, setFormSeasonalWorkersRO] = useState<{ [slotName: string]: number }>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft?.seasonalRO && Object.keys(draft.seasonalRO).length > 0) return draft.seasonalRO;
+    return {
+      "8H - 9H": 0,
+      "9H - 10H": 0,
+      "10H - 11H": 0,
+      "11H - 12H": 0,
+      "13H - 14H": 0,
+      "14H - 15H": 0,
+      "15H - 16H": 0,
+      "16H - 17H": 0,
+      "17H - 18H": 0,
+      "18H - 19H": 0,
+      "19H - 20H": 0,
+    };
   });
-  const [formOfficialWorkersRMA, setFormOfficialWorkersRMA] = useState<{ [slotName: string]: number }>({
-    "8H - 9H": 0,
-    "9H - 10H": 0,
-    "10H - 11H": 0,
-    "11H - 12H": 0,
-    "13H - 14H": 0,
-    "14H - 15H": 0,
-    "15H - 16H": 0,
-    "16H - 17H": 0,
-    "17H - 18H": 0,
-    "18H - 19H": 0,
-    "19H - 20H": 0,
+  const [formOfficialWorkersRMA, setFormOfficialWorkersRMA] = useState<{ [slotName: string]: number }>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft?.officialRMA && Object.keys(draft.officialRMA).length > 0) return draft.officialRMA;
+    return {
+      "8H - 9H": 0,
+      "9H - 10H": 0,
+      "10H - 11H": 0,
+      "11H - 12H": 0,
+      "13H - 14H": 0,
+      "14H - 15H": 0,
+      "15H - 16H": 0,
+      "16H - 17H": 0,
+      "17H - 18H": 0,
+      "18H - 19H": 0,
+      "19H - 20H": 0,
+    };
   });
-  const [formSeasonalWorkersRMA, setFormSeasonalWorkersRMA] = useState<{ [slotName: string]: number }>({
-    "8H - 9H": 0,
-    "9H - 10H": 0,
-    "10H - 11H": 0,
-    "11H - 12H": 0,
-    "13H - 14H": 0,
-    "14H - 15H": 0,
-    "15H - 16H": 0,
-    "16H - 17H": 0,
-    "17H - 18H": 0,
-    "18H - 19H": 0,
-    "19H - 20H": 0,
+  const [formSeasonalWorkersRMA, setFormSeasonalWorkersRMA] = useState<{ [slotName: string]: number }>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft?.seasonalRMA && Object.keys(draft.seasonalRMA).length > 0) return draft.seasonalRMA;
+    return {
+      "8H - 9H": 0,
+      "9H - 10H": 0,
+      "10H - 11H": 0,
+      "11H - 12H": 0,
+      "13H - 14H": 0,
+      "14H - 15H": 0,
+      "15H - 16H": 0,
+      "16H - 17H": 0,
+      "17H - 18H": 0,
+      "18H - 19H": 0,
+      "19H - 20H": 0,
+    };
   });
-  const [formOfficialWorkersBG, setFormOfficialWorkersBG] = useState<{ [slotName: string]: number }>({
-    "8H - 9H": 0,
-    "9H - 10H": 0,
-    "10H - 11H": 0,
-    "11H - 12H": 0,
-    "13H - 14H": 0,
-    "14H - 15H": 0,
-    "15H - 16H": 0,
-    "16H - 17H": 0,
-    "17H - 18H": 0,
-    "18H - 19H": 0,
-    "19H - 20H": 0,
+  const [formOfficialWorkersBG, setFormOfficialWorkersBG] = useState<{ [slotName: string]: number }>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft?.officialBG && Object.keys(draft.officialBG).length > 0) return draft.officialBG;
+    return {
+      "8H - 9H": 0,
+      "9H - 10H": 0,
+      "10H - 11H": 0,
+      "11H - 12H": 0,
+      "13H - 14H": 0,
+      "14H - 15H": 0,
+      "15H - 16H": 0,
+      "16H - 17H": 0,
+      "17H - 18H": 0,
+      "18H - 19H": 0,
+      "19H - 20H": 0,
+    };
   });
-  const [formSeasonalWorkersBG, setFormSeasonalWorkersBG] = useState<{ [slotName: string]: number }>({
-    "8H - 9H": 0,
-    "9H - 10H": 0,
-    "10H - 11H": 0,
-    "11H - 12H": 0,
-    "13H - 14H": 0,
-    "14H - 15H": 0,
-    "15H - 16H": 0,
-    "16H - 17H": 0,
-    "17H - 18H": 0,
-    "18H - 19H": 0,
-    "19H - 20H": 0,
+  const [formSeasonalWorkersBG, setFormSeasonalWorkersBG] = useState<{ [slotName: string]: number }>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft?.seasonalBG && Object.keys(draft.seasonalBG).length > 0) return draft.seasonalBG;
+    return {
+      "8H - 9H": 0,
+      "9H - 10H": 0,
+      "10H - 11H": 0,
+      "11H - 12H": 0,
+      "13H - 14H": 0,
+      "14H - 15H": 0,
+      "15H - 16H": 0,
+      "16H - 17H": 0,
+      "17H - 18H": 0,
+      "18H - 19H": 0,
+      "19H - 20H": 0,
+    };
   });
 
   // calculate hourly workers for RO and BG
@@ -911,23 +1098,29 @@ const [isScrolled, setIsScrolled] = useState(false);
     return hw;
   }, [formHourlyWorkersRO, formHourlyWorkersBG, formHourlyWorkersRMA, formSlots]);
 
-  const [formModelItems, setFormModelItems] = useState<FormModelItem[]>(() => [
-    {
-      id: "item-init",
-      productId: "mln-01",
-      dailyPlan: 0,
-      hourlyActuals: {
-        "8H - 9H": 0,
-        "9H - 10H": 0,
-        "10H - 11H": 0,
-        "11H - 12H": 0,
-        "13H - 14H": 0,
-        "14H - 15H": 0,
-        "15H - 16H": 0,
-        "16H - 17H": 0,
-      }
+  const [formModelItems, setFormModelItems] = useState<FormModelItem[]>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft && Array.isArray(draft.items) && draft.items.length > 0) {
+      return draft.items;
     }
-  ]);
+    return [
+      {
+        id: "item-init",
+        productId: "mln-01",
+        dailyPlan: 0,
+        hourlyActuals: {
+          "8H - 9H": 0,
+          "9H - 10H": 0,
+          "10H - 11H": 0,
+          "11H - 12H": 0,
+          "13H - 14H": 0,
+          "14H - 15H": 0,
+          "15H - 16H": 0,
+          "16H - 17H": 0,
+        }
+      }
+    ];
+  });
 
   const {
     formOfficialCountRO,
@@ -948,7 +1141,21 @@ const [isScrolled, setIsScrolled] = useState(false);
     let offBG = 0;
     let seasBG = 0;
 
-    formSlots.forEach(slot => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const isPast = formDate < todayStr;
+    const isToday = formDate === todayStr;
+    const currentHour = new Date().getHours();
+
+    const activeSlots = formSlots.filter(slot => {
+      if (isPast) return true;
+      if (!isToday) return false;
+      const slotStartHour = parseInt(slot.split("H")[0]);
+      return !isNaN(slotStartHour) && slotStartHour <= currentHour;
+    });
+
+    const divisor = activeSlots.length > 0 ? activeSlots.length : 1;
+
+    activeSlots.forEach(slot => {
       // Tính cho RO & RMA (MLN Group)
       let sumEqRO = 0;
       let sumEqRMA = 0;
@@ -997,34 +1204,354 @@ const [isScrolled, setIsScrolled] = useState(false);
     });
 
     return {
-      formOfficialCountRO: Number((offRO / 8).toFixed(2)) || 0,
-      formSeasonalCountRO: Number((seasRO / 8).toFixed(2)) || 0,
-      formWorkersCountRO: Number(((offRO + seasRO) / 8).toFixed(2)) || 0,
-      formOfficialCountRMA: Number((offRMA / 8).toFixed(2)) || 0,
-      formSeasonalCountRMA: Number((seasRMA / 8).toFixed(2)) || 0,
-      formWorkersCountRMA: Number(((offRMA + seasRMA) / 8).toFixed(2)) || 0,
-      formOfficialCountBG: Number((offBG / 8).toFixed(2)) || 0,
-      formSeasonalCountBG: Number((seasBG / 8).toFixed(2)) || 0,
-      formWorkersCountBG: Number(((offBG + seasBG) / 8).toFixed(2)) || 0,
-      formWorkersCount: Number(((offRO + seasRO + offRMA + seasRMA + offBG + seasBG) / 8).toFixed(2)) || 0,
+      formOfficialCountRO: Number((offRO / 8).toFixed(3)) || 0,
+      formSeasonalCountRO: Number((seasRO / 8).toFixed(3)) || 0,
+      formWorkersCountRO: Number(((offRO + seasRO) / 8).toFixed(3)) || 0,
+      formOfficialCountRMA: Number((offRMA / 8).toFixed(3)) || 0,
+      formSeasonalCountRMA: Number((seasRMA / 8).toFixed(3)) || 0,
+      formWorkersCountRMA: Number(((offRMA + seasRMA) / 8).toFixed(3)) || 0,
+      formOfficialCountBG: Number((offBG / 8).toFixed(3)) || 0,
+      formSeasonalCountBG: Number((seasBG / 8).toFixed(3)) || 0,
+      formWorkersCountBG: Number(((offBG + seasBG) / 8).toFixed(3)) || 0,
+      formWorkersCount: Number(((offRO + seasRO + offRMA + seasRMA + offBG + seasBG) / 8).toFixed(3)) || 0,
     };
-  }, [formSlots, formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, products]);
-  const [formTechnician, setFormTechnician] = useState<string>("Nguyễn Minh Hoàng Khiêm ( DCLR )");
+  }, [formDate, formSlots, formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, products]);
+  const [formTechnician, setFormTechnician] = useState<string>(() => {
+    const draft = getInitialActiveDraft();
+    if (draft && draft.technician) return draft.technician;
+    return "Nguyễn Minh Hoàng Khiêm ( DCLR )";
+  });
   const [formMessage, setFormMessage] = useState<string>("");
 
-  // Lưu trữ dữ liệu vào localStorage khi có thay đổi
+  // Quản lý đồng bộ trực tiếp hai chiều & Realtime cho Form Nhật ký ca
+  const formDateRef = useRef(formDate);
+  const formShiftRef = useRef(formShift);
+  formDateRef.current = formDate;
+  formShiftRef.current = formShift;
+  const isSyncingFromExternalRef = useRef(false);
+  const lastLoadedDateShiftRef = useRef<string>("");
+  const activeEditingCellRef = useRef<{ id: string; slotName: string; timestamp: number } | null>(null);
+  const broadcastDebounceRef = useRef<any>(null);
+  const monthlyPlanRef = useRef(monthlyPlan);
+  monthlyPlanRef.current = monthlyPlan;
+  const lastFetchedDateDeptRef = useRef<string>("");
+
+  // Tự động nạp dữ liệu ca từ productionLogs / drafts / KHSX tháng khi chuyển ngày hoặc ca
   useEffect(() => {
-    localStorage.setItem("sunhouse_metrics_2025_v2", JSON.stringify(metrics2025));
+    if (!formDate || !formShift || isSyncingFromExternalRef.current) return;
+
+    const dateShiftKey = `${formDate}_${formShift}`;
+    const isDateShiftChanged = lastLoadedDateShiftRef.current !== dateShiftKey;
+
+    // Nếu ngày và ca không đổi, và form đã có dữ liệu người dùng đang thao tác,
+    // TUYỆT ĐỐI KHÔNG ghi đè lại formModelItems khi productionLogs thay đổi trong nền
+    // để dữ liệu tính toán tức thì như LocalStorage và không bao giờ bị nhảy số loạn.
+    if (!isDateShiftChanged && formModelItems.length > 0) {
+      return;
+    }
+    lastLoadedDateShiftRef.current = dateShiftKey;
+
+    // 1. Kiểm tra Bản Nháp (Draft) chưa lưu trước tiên để giữ lại toàn bộ số liệu vừa gõ dở
+    const draft = getDraftForDateAndShift(formDate, formShift);
+    if (draft && Array.isArray(draft.items) && draft.items.length > 0) {
+      if (draft.slots && Array.isArray(draft.slots) && draft.slots.length > 0) {
+        const cleanSlots = draft.slots.filter(isValidHourlySlot);
+        if (cleanSlots.length > 0) setFormSlots(cleanSlots);
+      }
+      const cleanItems = draft.items.map(it => {
+        const cleanHourly: Record<string, number> = {};
+        Object.entries(it.hourlyActuals || {}).forEach(([k, v]) => {
+          if (isValidHourlySlot(k)) cleanHourly[k] = Number(v) || 0;
+        });
+        return { ...it, hourlyActuals: cleanHourly };
+      });
+      setFormModelItems(cleanItems);
+      if (draft.officialRO) setFormOfficialWorkersRO(draft.officialRO);
+      if (draft.seasonalRO) setFormSeasonalWorkersRO(draft.seasonalRO);
+      if (draft.officialBG) setFormOfficialWorkersBG(draft.officialBG);
+      if (draft.seasonalBG) setFormSeasonalWorkersBG(draft.seasonalBG);
+      if (draft.officialRMA) setFormOfficialWorkersRMA(draft.officialRMA);
+      if (draft.seasonalRMA) setFormSeasonalWorkersRMA(draft.seasonalRMA);
+      if (draft.technician) setFormTechnician(draft.technician);
+      return;
+    }
+    
+    const [year, month, day] = formDate.split("-");
+    const ym = `${year}-${month}`;
+    const dayNum = parseInt(day, 10);
+
+    const logsForDate = productionLogs.filter(l => l.date === formDate && l.shift === formShift);
+
+    if (logsForDate.length > 0) {
+      // 2. Tự động nạp từ bản ghi productionLogs của ngày/ca đó
+      const allSlots = new Set<string>();
+      logsForDate.forEach(log => {
+        if (log.hourlyActuals) {
+          Object.keys(log.hourlyActuals).forEach(slot => {
+            if (isValidHourlySlot(slot)) allSlots.add(slot);
+          });
+        }
+      });
+      const defaultSlots = getShiftSlots(formShift);
+      defaultSlots.forEach(s => {
+        if (isValidHourlySlot(s)) allSlots.add(s);
+      });
+      const sortedSlots = Array.from(allSlots).sort((a, b) => {
+        const hA = parseInt(a.split("H")[0]) || 0;
+        const hB = parseInt(b.split("H")[0]) || 0;
+        return hA - hB;
+      });
+      if (sortedSlots.length > 0) {
+        setFormSlots(sortedSlots);
+      }
+
+      const items: FormModelItem[] = logsForDate.map(log => {
+        const planVal = (!isNaN(dayNum) && monthlyPlan[ym]?.[log.productId]?.[dayNum]) || 0;
+        const cleanHourly: Record<string, number> = {};
+        if (log.hourlyActuals) {
+          Object.entries(log.hourlyActuals).forEach(([k, v]) => {
+            if (isValidHourlySlot(k)) cleanHourly[k] = Number(v) || 0;
+          });
+        }
+        return {
+          id: `item-${log.productId}-${log.id}`,
+          productId: log.productId,
+          dailyPlan: planVal,
+          hourlyActuals: cleanHourly,
+        };
+      });
+      setFormModelItems(items);
+
+      // Khôi phục nhân sự theo từng bộ phận
+      const newOffRO: Record<string, number> = {};
+      const newSeasRO: Record<string, number> = {};
+      const newOffBG: Record<string, number> = {};
+      const newSeasBG: Record<string, number> = {};
+      const newOffRMA: Record<string, number> = {};
+      const newSeasRMA: Record<string, number> = {};
+
+      logsForDate.forEach(log => {
+        const isRMA = log.lineId === "line-rma-03";
+        const isMLN = log.lineId === "line-mln-01";
+        const isBG = log.lineId === "line-bg-02";
+
+        const off = log.hourlyOfficialWorkers || {};
+        const seas = log.hourlySeasonalWorkers || {};
+
+        if (isRMA) {
+          Object.assign(newOffRMA, off);
+          Object.assign(newSeasRMA, seas);
+        } else if (isMLN) {
+          Object.assign(newOffRO, off);
+          Object.assign(newSeasRO, seas);
+        } else if (isBG) {
+          Object.assign(newOffBG, off);
+          Object.assign(newSeasBG, seas);
+        }
+      });
+
+      if (Object.keys(newOffRO).length > 0) setFormOfficialWorkersRO(newOffRO);
+      if (Object.keys(newSeasRO).length > 0) setFormSeasonalWorkersRO(newSeasRO);
+      if (Object.keys(newOffBG).length > 0) setFormOfficialWorkersBG(newOffBG);
+      if (Object.keys(newSeasBG).length > 0) setFormSeasonalWorkersBG(newSeasBG);
+      if (Object.keys(newOffRMA).length > 0) setFormOfficialWorkersRMA(newOffRMA);
+      if (Object.keys(newSeasRMA).length > 0) setFormSeasonalWorkersRMA(newSeasRMA);
+      if (logsForDate[0]?.technicianName) {
+        setFormTechnician(logsForDate[0].technicianName);
+      }
+    } else {
+      // 3. Chưa có log & chưa có draft: Tự động khởi tạo từ KHSX Tháng (monthlyPlan)
+      if (!isNaN(dayNum) && monthlyPlan[ym]) {
+        const plannedProducts = products.filter(p => (monthlyPlan[ym]?.[p.id]?.[dayNum] || 0) > 0);
+        if (plannedProducts.length > 0) {
+          const shiftSlots = getShiftSlots(formShift).filter(isValidHourlySlot);
+          setFormSlots(shiftSlots);
+          const newItems: FormModelItem[] = plannedProducts.map(p => {
+            const initialHrs: Record<string, number> = {};
+            shiftSlots.forEach(s => { initialHrs[s] = 0; });
+            return {
+              id: `item-${p.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              productId: p.id,
+              dailyPlan: monthlyPlan[ym][p.id][dayNum],
+              hourlyActuals: initialHrs,
+            };
+          });
+          setFormModelItems(newItems);
+        }
+      }
+    }
+  }, [formDate, formShift, productionLogs]);
+
+  // --------------------------------------------------------------------
+  // 1. KHỞI TẠO VÀ TẢI DỮ LIỆU BAN ĐẦU TỪ SUPABASE CHO TAB 'GHI NHẬT KÝ CA'
+  // --------------------------------------------------------------------
+  const fetchShiftLogsAndMapToMatrix = useCallback(async (selectedDate: string, selectedDept: string) => {
+    if (!supabase || !isSupabaseConfigured) return;
+
+    try {
+      const { data: rows, error } = await storage.fetchShiftProductionLogs(selectedDate, selectedDept);
+      if (error) {
+        console.warn("[storage] Lỗi query production_logs theo ngày:", error);
+        showToastError(error.message || "Lỗi tải dữ liệu nhật ký ca từ Supabase");
+        return;
+      }
+
+      if (!rows || rows.length === 0) return;
+
+      const matchSlotName = (shiftStr: string, currentSlots: string[]) => {
+        const clean = shiftStr.replace(/\s+/g, '').toUpperCase();
+        const found = currentSlots.find(s => s.replace(/\s+/g, '').toUpperCase() === clean);
+        return found || shiftStr;
+      };
+
+      setFormModelItems((prevItems) => {
+        const itemMap = new Map<string, FormModelItem>();
+        prevItems.forEach((it) => {
+          itemMap.set(it.productId, {
+            ...it,
+            hourlyActuals: { ...it.hourlyActuals }
+          });
+        });
+
+        const activeSlots = new Set<string>(formSlotsRef.current.filter(isValidHourlySlot));
+        const active = activeEditingCellRef.current;
+        const isRecentEdit = active && Date.now() - active.timestamp < 3000;
+
+        rows.forEach((row: any) => {
+          const code = row.product_code || row.productId || row.product_id;
+          const matchedProd = products.find(
+            (p) => p.code === code || getProductModelCode(p.name) === code || p.id === code
+          );
+          if (!matchedProd) return;
+
+          if (selectedDept !== 'ALL') {
+            const rowDept = row.department || row.product_group || matchedProd.group;
+            if (rowDept && rowDept !== selectedDept) return;
+          }
+
+          const prodId = matchedProd.id;
+          let item = itemMap.get(prodId);
+          if (!item) {
+            const [year, month, day] = selectedDate.split('-');
+            const ym = `${year}-${month}`;
+            const dayNum = parseInt(day, 10);
+            const planVal = (monthlyPlanRef.current[ym]?.[prodId]?.[dayNum]) || 0;
+            item = {
+              id: `item-${prodId}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              productId: prodId,
+              dailyPlan: planVal,
+              hourlyActuals: {},
+            };
+            itemMap.set(prodId, item);
+          }
+
+          // Granular row (work_date, product_code, shift, quantity)
+          const isHourlySlotShift = Boolean(row.shift && isValidHourlySlot(row.shift));
+          if (isHourlySlotShift && (row.quantity !== undefined || row.actual_units !== undefined)) {
+            const slot = matchSlotName(row.shift, Array.from(activeSlots));
+            if (isValidHourlySlot(slot)) {
+              activeSlots.add(slot);
+              // Giữ lại số người dùng đang gõ dở nếu ô đang được sửa gần đây
+              const isCellActive = isRecentEdit && active && (active.id === item.id || active.id === item.productId) && active.slotName === slot;
+              if (!isCellActive && (item.hourlyActuals[slot] === undefined || item.hourlyActuals[slot] === 0)) {
+                item.hourlyActuals[slot] = Number(row.quantity ?? row.actual_units ?? 0);
+              }
+            }
+          }
+
+          // Legacy / Standard hourly_actuals JSONB
+          if (row.hourly_actuals && typeof row.hourly_actuals === 'object') {
+            Object.entries(row.hourly_actuals).forEach(([slotKey, val]) => {
+              if (isValidHourlySlot(slotKey)) {
+                const slot = matchSlotName(slotKey, Array.from(activeSlots));
+                if (isValidHourlySlot(slot)) {
+                  activeSlots.add(slot);
+                  const isCellActive = isRecentEdit && active && (active.id === item!.id || active.id === item!.productId) && active.slotName === slot;
+                  if (!isCellActive && (item!.hourlyActuals[slot] === undefined || item!.hourlyActuals[slot] === 0)) {
+                    item!.hourlyActuals[slot] = Number(val || 0);
+                  }
+                }
+              }
+            });
+          }
+        });
+
+        const sortedSlots = Array.from(activeSlots)
+          .filter(isValidHourlySlot)
+          .sort((a, b) => {
+            const hourA = parseInt(a.match(/^(\d+)/)?.[1] || '0', 10);
+            const hourB = parseInt(b.match(/^(\d+)/)?.[1] || '0', 10);
+            return hourA - hourB;
+          });
+        if (sortedSlots.length > 0) {
+          setFormSlots(sortedSlots);
+        }
+
+        return Array.from(itemMap.values());
+      });
+    } catch (err: any) {
+      console.error("[storage] Ngoại lệ khi fetchShiftLogsAndMapToMatrix:", err);
+    }
+  }, [products, showToastError]);
+
+  // Tự động tải lại ma trận khi chọn Ngày hoặc Bộ phận (chỉ khi giá trị thay đổi thực sự)
+  useEffect(() => {
+    const fetchKey = `${formDate}_${filterDivision}`;
+    if (lastFetchedDateDeptRef.current === fetchKey) return;
+    lastFetchedDateDeptRef.current = fetchKey;
+    fetchShiftLogsAndMapToMatrix(formDate, filterDivision);
+  }, [formDate, filterDivision, fetchShiftLogsAndMapToMatrix]);
+
+  // Lưu trữ LocalStorage tức thì để đảm bảo an toàn dữ liệu máy cục bộ (không gửi mạng Supabase khi đang gõ phím)
+  useEffect(() => {
+    if (!isLoadedRef.current || !formDate || !formShift || isSyncingFromExternalRef.current) return;
+
+    const draftData: storage.FormDraftData = {
+      date: formDate,
+      shift: formShift,
+      slots: formSlots,
+      items: formModelItems,
+      officialRO: formOfficialWorkersRO,
+      seasonalRO: formSeasonalWorkersRO,
+      officialBG: formOfficialWorkersBG,
+      seasonalBG: formSeasonalWorkersBG,
+      officialRMA: formOfficialWorkersRMA,
+      seasonalRMA: formSeasonalWorkersRMA,
+      technician: formTechnician,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Lưu LocalStorage tức thì (cả key ngày/ca lẫn active draft) - độ trễ 0ms
+    localStorage.setItem(`sunhouse_draft_${formDate}_${formShift}`, JSON.stringify(draftData));
+    localStorage.setItem('sunhouse_last_active_form_draft', JSON.stringify(draftData));
+
+    // Supabase chỉ được ghi khi người dùng sửa số và nhấn Enter (hoặc hoàn tất ô)
+  }, [
+    formDate,
+    formShift,
+    formSlots,
+    formModelItems,
+    formOfficialWorkersRO,
+    formSeasonalWorkersRO,
+    formOfficialWorkersBG,
+    formSeasonalWorkersBG,
+    formOfficialWorkersRMA,
+    formSeasonalWorkersRMA,
+    formTechnician,
+  ]);
+
+  // Lưu trữ dữ liệu khi có thay đổi (LocalStorage cache phản hồi tức thì 0ms, tiết kiệm 100% Egress mạng)
+  useEffect(() => {
+    localStorage.setItem("sunhouse_metrics_2025", JSON.stringify(metrics2025));
   }, [metrics2025]);
 
   useEffect(() => {
-    localStorage.setItem("sunhouse_metrics_2026_v2", JSON.stringify(metrics2026));
+    localStorage.setItem("sunhouse_metrics_2026", JSON.stringify(metrics2026));
   }, [metrics2026]);
 
   useEffect(() => {
-    localStorage.setItem("sunhouse_monthly_targets_v2", JSON.stringify(monthlyTargets));
+    localStorage.setItem("sunhouse_monthly_targets", JSON.stringify(monthlyTargets));
   }, [monthlyTargets]);
-
 
   useEffect(() => {
     localStorage.setItem("sunhouse_gas_daily_reports_v2", JSON.stringify(gasDailyReports));
@@ -1035,8 +1562,641 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, [assemblyDailyReports]);
 
   useEffect(() => {
+    localStorage.setItem("sunhouse_production_logs_v2", JSON.stringify(productionLogs));
+  }, [productionLogs]);
+
+  useEffect(() => {
     localStorage.setItem("sunhouse_products_v2", JSON.stringify(products));
   }, [products]);
+
+  // Đồng bộ số liệu lịch sử các tháng từ toàn bộ danh sách nhật ký ca
+  const syncHistoricalMetricsWithLogs = useCallback((currentLogs: ProductionLog[]) => {
+    const yearMonthMap: { [year: number]: { [month: number]: ProductionLog[] } } = {
+      2025: {},
+      2026: {},
+    };
+
+    currentLogs.forEach((log) => {
+      const parts = log.date.split("-");
+      if (parts.length >= 2) {
+        const yr = parseInt(parts[0], 10);
+        const mo = parseInt(parts[1], 10);
+        if (yr === 2025 || yr === 2026) {
+          if (!yearMonthMap[yr][mo]) {
+            yearMonthMap[yr][mo] = [];
+          }
+          yearMonthMap[yr][mo].push(log);
+        }
+      }
+    });
+
+    const updateYearMetrics = (year: 2025 | 2026, setMetrics: React.Dispatch<React.SetStateAction<MonthlyMetric[]>>) => {
+      setMetrics((prevMetrics) => {
+        const updated = prevMetrics.map((m) => {
+          const monthLogs = yearMonthMap[year]?.[m.month];
+          if (!monthLogs || monthLogs.length === 0) {
+            return m;
+          }
+          const totalActual = monthLogs.reduce((acc, curr) => acc + (curr.actualUnits || 0), 0);
+          const totalEq = monthLogs.reduce((acc, curr) => acc + (curr.equivalentProducts || 0), 0);
+
+          // Tính công lao động thực tế duy nhất theo ca và chuyền
+          const uniqueShiftWorkersMap: { [key: string]: number } = {};
+          monthLogs.forEach((log) => {
+            const key = `${log.date}_${log.shift}_${log.lineId}`;
+            uniqueShiftWorkersMap[key] = Math.max(uniqueShiftWorkersMap[key] || 0, log.workersCount || 0);
+          });
+          const totalMandays = Object.values(uniqueShiftWorkersMap).reduce((acc, val) => acc + (val || 0), 0);
+
+          const calculatedProductivity = (totalMandays > 0 && !Number.isNaN(Number(totalEq)))
+            ? Number(((totalEq / totalMandays) / INDUSTRIAL_STANDARDS.standardQtyPerManday * 100).toFixed(2))
+            : (m.laborProductivityPercent || 100);
+
+          return {
+            ...m,
+            actualProducts: totalActual,
+            equivalentProducts: totalEq,
+            productionMandays: totalMandays,
+            laborProductivityPercent: calculatedProductivity,
+          };
+        });
+        storage.saveMonthlyMetrics(year, updated);
+        return updated;
+      });
+    };
+
+    if (Object.keys(yearMonthMap[2026]).length > 0) {
+      updateYearMetrics(2026, setMetrics2026);
+    }
+    if (Object.keys(yearMonthMap[2025]).length > 0) {
+      updateYearMetrics(2025, setMetrics2025);
+    }
+  }, []);
+
+  const syncHistoryFromLogs = useCallback(() => {
+    syncHistoricalMetricsWithLogs(productionLogs);
+    setFormMessage("✅ Đã đồng bộ toàn bộ dữ liệu lịch sử và chỉ tiêu từ Nhật ký ca!");
+    setTimeout(() => {
+      setFormMessage("");
+    }, 3500);
+  }, [productionLogs, syncHistoricalMetricsWithLogs]);
+
+  // Hàm tải / làm mới dữ liệu từ Supabase Cloud
+  const refreshFromCloud = useCallback(async () => {
+    try {
+      if (isSupabaseConfigured) {
+        setSyncStatus('syncing');
+        setSyncMessage('Đang tải dữ liệu từ Supabase Cloud...');
+      } else {
+        setSyncStatus('local');
+        setSyncMessage('Chế độ Local (Chưa cấu hình Supabase)');
+      }
+
+      const [
+        loadedWorkers,
+        loadedAttendance,
+        loadedProducts,
+        loadedLogs,
+        loadedPlan,
+        loadedTargets,
+        loaded2025,
+        loaded2026,
+        allDaily,
+      ] = await Promise.all([
+        storage.getWorkers(),
+        storage.getAttendanceLogs(1000),
+        storage.getProducts(),
+        storage.getProductionLogs(1000),
+        storage.getMonthlyPlan(),
+        storage.getMonthlyTargets(),
+        storage.getMonthlyMetrics(2025),
+        storage.getMonthlyMetrics(2026),
+        storage.getAllDailyReports(),
+      ]);
+
+      if (loadedWorkers && loadedWorkers.length > 0) setWorkers(loadedWorkers);
+      if (loadedAttendance && loadedAttendance.length > 0) setAttendanceLogs(loadedAttendance);
+      if (loadedProducts && loadedProducts.length > 0) setProducts(loadedProducts);
+      if (loadedLogs && loadedLogs.length > 0) setProductionLogs(loadedLogs);
+      if (loadedPlan && Object.keys(loadedPlan).length > 0) setMonthlyPlan(loadedPlan);
+      if (loadedTargets && Object.keys(loadedTargets).length > 0) setMonthlyTargets(loadedTargets);
+      if (loaded2025 && loaded2025.length > 0) setMetrics2025(loaded2025);
+      if (loaded2026 && loaded2026.length > 0) setMetrics2026(loaded2026);
+      if (allDaily.gas && allDaily.gas.length > 0) setGasDailyReports(allDaily.gas);
+      if (allDaily.assembly && allDaily.assembly.length > 0) setAssemblyDailyReports(allDaily.assembly);
+      if (allDaily.declaredImeis && allDaily.declaredImeis.length > 0) setDeclaredImeis(allDaily.declaredImeis);
+      if (allDaily.scannedImeis && allDaily.scannedImeis.length > 0) setScannedImeis(allDaily.scannedImeis);
+      if (allDaily.monthlyScrap && allDaily.monthlyScrap.length > 0) setMonthlyScrap(allDaily.monthlyScrap);
+      if (allDaily.weeklyScrap && allDaily.weeklyScrap.length > 0) setWeeklyScrap(allDaily.weeklyScrap);
+      if (allDaily.weeklyDclr && allDaily.weeklyDclr.length > 0) setWeeklyDclrError(allDaily.weeklyDclr);
+      if (allDaily.monthlyDclr && allDaily.monthlyDclr.length > 0) setMonthlyDclrError(allDaily.monthlyDclr);
+
+      // Để React hoàn tất render dữ liệu mới tải từ Cloud trước khi kích hoạt cờ lưu trữ tự động
+      setTimeout(() => {
+        isLoadedRef.current = true;
+      }, 400);
+      setIsInitialLoading(false);
+
+      if (isSupabaseConfigured) {
+        setSyncStatus('synced');
+        setSyncMessage('Đã đồng bộ trực tuyến với Supabase');
+      }
+    } catch (err: any) {
+      console.warn('[Supabase] Thông báo khi nạp dữ liệu từ Cloud:', err?.message || err);
+      setTimeout(() => {
+        isLoadedRef.current = true;
+      }, 400);
+      setIsInitialLoading(false);
+      setSyncStatus('error');
+      setSyncMessage('Lỗi kết nối Supabase, đang dùng dữ liệu lưu tạm');
+    }
+  }, []);
+
+  // Tải lại danh sách nhân sự trực tiếp từ Supabase Cloud
+  const fetchWorkers = useCallback(async () => {
+    try {
+      const fresh = await storage.getWorkers();
+      if (fresh) {
+        setWorkers(fresh);
+      }
+    } catch (err: any) {
+      console.warn('[Realtime] Lỗi khi nạp danh sách workers:', err?.message || err);
+    }
+  }, []);
+
+  // Khởi chạy khi khởi động ứng dụng & Đăng ký Realtime
+  useEffect(() => {
+    refreshFromCloud();
+
+    // 1. Đăng ký Realtime đa bảng với cơ chế Update State trực tiếp từ Payload (Egress = 0 khi nhận thay đổi)
+    const unsubscribe = storage.subscribeToRealtime({
+      // (1) Bảng workers: Cập nhật state trực tiếp
+      onWorkersChange: (payload) => {
+        const mapPayloadToWorker = (row: any): Worker => {
+          const id = String(row.id || row.worker_code || '');
+          return {
+            id,
+            name: String(row.name || row.full_name || ''),
+            division: (row.division || row.department || 'RO') as WorkerDivision,
+            type: (row.type || row.status || 'OFFICIAL') as WorkerType,
+            qrCode: String(row.qr_code || row.worker_code || id),
+            imageUrl: row.image_url || undefined,
+          };
+        };
+
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newWorker = mapPayloadToWorker(payload.new);
+          if (newWorker.id) {
+            setWorkers((prev) => {
+              if (prev.some((w) => w.id === newWorker.id)) {
+                return prev.map((w) => (w.id === newWorker.id ? { ...w, ...newWorker } : w));
+              }
+              return [newWorker, ...prev];
+            });
+          }
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          const updatedWorker = mapPayloadToWorker(payload.new);
+          if (updatedWorker.id) {
+            setWorkers((prev) => {
+              const exists = prev.some((w) => w.id === updatedWorker.id);
+              if (exists) {
+                return prev.map((w) => (w.id === updatedWorker.id ? { ...w, ...updatedWorker } : w));
+              }
+              return [updatedWorker, ...prev];
+            });
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const deleteId = String(payload.old?.id || (payload.old as any)?.worker_code || '');
+          if (deleteId) {
+            setWorkers((prev) => prev.filter((w) => w.id !== deleteId));
+          }
+        }
+      },
+
+      // (2) Bảng products: Cập nhật state trực tiếp
+      onProductsChange: (payload) => {
+        const mapPayloadToProduct = (row: any): ProductDefinition => ({
+          id: String(row.id || ''),
+          name: String(row.name || ''),
+          group: (row.group || 'MLN') as ProductGroup,
+          code: String(row.code || ''),
+          factor: Number(row.factor ?? 1),
+          price: row.price !== null && row.price !== undefined ? Number(row.price) : undefined,
+          description: String(row.description || ''),
+        });
+
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newProd = mapPayloadToProduct(payload.new);
+          if (newProd.id) {
+            setProducts((prev) => {
+              if (prev.some((p) => p.id === newProd.id)) {
+                return prev.map((p) => (p.id === newProd.id ? { ...p, ...newProd } : p));
+              }
+              return [...prev, newProd];
+            });
+          }
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          const updatedProd = mapPayloadToProduct(payload.new);
+          if (updatedProd.id) {
+            setProducts((prev) => {
+              const exists = prev.some((p) => p.id === updatedProd.id);
+              if (exists) {
+                return prev.map((p) => (p.id === updatedProd.id ? { ...p, ...updatedProd } : p));
+              }
+              return [...prev, updatedProd];
+            });
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const deleteId = String(payload.old?.id || '');
+          if (deleteId) {
+            setProducts((prev) => prev.filter((p) => p.id !== deleteId));
+          }
+        }
+      },
+
+      // (3) Bảng production_logs: Cập nhật state trực tiếp
+      onProductionLogsChange: (payload) => {
+        const mapPayloadToProductionLog = (row: any): ProductionLog => {
+          const hw = row.hourly_workers || row.hourlyWorkers || {};
+          let official = row.hourly_official_workers || row.hourlyOfficialWorkers || hw["__official"];
+          let seasonal = row.hourly_seasonal_workers || row.hourlySeasonalWorkers || hw["__seasonal"];
+          
+          const cleanedHw = { ...hw };
+          delete cleanedHw["__official"];
+          delete cleanedHw["__seasonal"];
+
+          return {
+            id: String(row.id || ''),
+            date: String(row.date || ''),
+            lineId: String(row.line_id || row.lineId || ''),
+            lineName: String(row.line_name || row.lineName || ''),
+            productId: String(row.product_id || row.productId || ''),
+            productName: String(row.product_name || row.productName || ''),
+            productGroup: (row.product_group || row.productGroup || 'MLN') as ProductGroup,
+            actualUnits: Number(row.actual_units ?? row.actualUnits ?? 0),
+            workersCount: Number(row.workers_count ?? row.workersCount ?? 0),
+            officialWorkers: row.official_workers !== null && row.official_workers !== undefined ? Number(row.official_workers) : undefined,
+            seasonalWorkers: row.seasonal_workers !== null && row.seasonal_workers !== undefined ? Number(row.seasonal_workers) : undefined,
+            equivalentFactor: Number(row.equivalent_factor ?? row.equivalentFactor ?? 1),
+            equivalentProducts: Number(row.equivalent_products ?? row.equivalentProducts ?? 0),
+            laborProductivityPercent: Number(row.labor_productivity_percent ?? row.laborProductivityPercent ?? 0),
+            shift: (row.shift || 'Ca HC (08:00 - 17:00)') as ProductionLog['shift'],
+            technicianName: String(row.technician_name || row.technicianName || ''),
+            hourlyActuals: row.hourly_actuals || row.hourlyActuals || {},
+            hourlyWorkers: cleanedHw,
+            hourlyOfficialWorkers: official || {},
+            hourlySeasonalWorkers: seasonal || {},
+          };
+        };
+
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newLog = mapPayloadToProductionLog(payload.new);
+          if (newLog.id) {
+            setProductionLogs((prev) => {
+              if (prev.some((l) => l.id === newLog.id)) {
+                return prev.map((l) => (l.id === newLog.id ? { ...l, ...newLog } : l));
+              }
+              return [newLog, ...prev];
+            });
+          }
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          const updatedLog = mapPayloadToProductionLog(payload.new);
+          if (updatedLog.id) {
+            setProductionLogs((prev) => {
+              const exists = prev.some((l) => l.id === updatedLog.id);
+              if (exists) {
+                return prev.map((l) => (l.id === updatedLog.id ? { ...l, ...updatedLog } : l));
+              }
+              return [updatedLog, ...prev];
+            });
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const deleteId = String(payload.old?.id || '');
+          if (deleteId) {
+            setProductionLogs((prev) => prev.filter((l) => l.id !== deleteId));
+          }
+        }
+
+        // 3. ĐỒNG BỘ REALTIME GRANULAR CHO MA TRẬN NHẬT KÝ CA (CHỈ CẬP NHẬT ĐÚNG Ô ĐÓ, KHÔNG FETCH LẠI CẢ MA TRẬN):
+        if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && payload.new) {
+          const row = payload.new;
+          const rowDate = row.work_date || row.date;
+          const rowProdCode = row.product_code || row.productId || row.product_id;
+          const rowShift = row.shift;
+          const rowQty = Number(row.quantity ?? row.actual_units ?? 0);
+
+          if (rowDate === formDateRef.current && rowProdCode) {
+            const cleanShift = rowShift ? rowShift.replace(/\s+/g, '').toUpperCase() : '';
+            const matchedProd = products.find(
+              (p) => p.code === rowProdCode || getProductModelCode(p.name) === rowProdCode || p.id === rowProdCode
+            );
+            const targetProdId = matchedProd?.id || rowProdCode;
+
+            // Xử lý cập nhật granular theo dòng đơn (work_date, product_code, shift, quantity)
+            if (rowShift && isValidHourlySlot(rowShift)) {
+              setFormSlots((prevSlots) => {
+                const cleanPrev = prevSlots.filter(isValidHourlySlot);
+                const hasSlot = cleanPrev.some((s) => s.replace(/\s+/g, '').toUpperCase() === cleanShift);
+                if (!hasSlot) {
+                  return [...cleanPrev, rowShift].sort((a, b) => {
+                    const hourA = parseInt(a.match(/^(\d+)/)?.[1] || '0', 10);
+                    const hourB = parseInt(b.match(/^(\d+)/)?.[1] || '0', 10);
+                    return hourA - hourB;
+                  });
+                }
+                return cleanPrev;
+              });
+
+              setFormModelItems((prevItems) => {
+                const itemIdx = prevItems.findIndex((it) => it.productId === targetProdId);
+                if (itemIdx !== -1) {
+                  return prevItems.map((it, idx) => {
+                    if (idx !== itemIdx) return it;
+                    // Bỏ qua nếu ô này đang được người dùng thao tác trong vòng 3s
+                    const active = activeEditingCellRef.current;
+                    if (
+                      active &&
+                      (active.id === it.id || active.id === it.productId) &&
+                      active.slotName.replace(/\s+/g, '').toUpperCase() === cleanShift &&
+                      Date.now() - active.timestamp < 3000
+                    ) {
+                      return it;
+                    }
+
+                    const actualKey = Object.keys(it.hourlyActuals).find(
+                      (k) => k.replace(/\s+/g, '').toUpperCase() === cleanShift
+                    ) || rowShift;
+
+                    if (it.hourlyActuals[actualKey] === rowQty) return it;
+
+                    return {
+                      ...it,
+                      hourlyActuals: {
+                        ...it.hourlyActuals,
+                        [actualKey]: rowQty,
+                      },
+                    };
+                  });
+                } else {
+                  return [
+                    ...prevItems,
+                    {
+                      id: `item-${targetProdId}-${Date.now()}`,
+                      productId: targetProdId,
+                      dailyPlan: 0,
+                      hourlyActuals: {
+                        [rowShift]: rowQty,
+                      },
+                    },
+                  ];
+                }
+              });
+            }
+
+            // Xử lý cập nhật standard hourly_actuals JSONB
+            if (row.hourly_actuals && typeof row.hourly_actuals === 'object') {
+              setFormModelItems((prevItems) => {
+                const itemIdx = prevItems.findIndex((it) => it.productId === targetProdId);
+                if (itemIdx === -1) return prevItems;
+                return prevItems.map((it, idx) => {
+                  if (idx !== itemIdx) return it;
+                  const nextHourly = { ...it.hourlyActuals };
+                  let changed = false;
+                  Object.entries(row.hourly_actuals).forEach(([slotK, slotVal]) => {
+                    if (isValidHourlySlot(slotK)) {
+                      const cleanK = slotK.replace(/\s+/g, '').toUpperCase();
+                      const active = activeEditingCellRef.current;
+                      if (
+                        active &&
+                        (active.id === it.id || active.id === it.productId) &&
+                        active.slotName.replace(/\s+/g, '').toUpperCase() === cleanK &&
+                        Date.now() - active.timestamp < 3000
+                      ) {
+                        return;
+                      }
+                      const numVal = Number(slotVal) || 0;
+                      if (nextHourly[slotK] !== numVal) {
+                        nextHourly[slotK] = numVal;
+                        changed = true;
+                      }
+                    }
+                  });
+                  return changed ? { ...it, hourlyActuals: nextHourly } : it;
+                });
+              });
+            }
+          }
+        }
+      },
+
+      // (4) Bảng attendance_records: Cập nhật state trực tiếp
+      onAttendanceChange: (payload) => {
+        const mapPayloadToAttendance = (row: any): AttendanceRecord => ({
+          id: String(row.id || ''),
+          workerId: String(row.worker_id || row.workerId || ''),
+          date: String(row.date || ''),
+          slot: row.slot || undefined,
+          checkInTime: String(row.check_in_time || row.checkInTime || ''),
+          checkOutTime: row.check_out_time || row.checkOutTime || undefined,
+          scannedDivision: (row.scanned_division || row.scannedDivision || undefined) as WorkerDivision | undefined,
+        });
+
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newAtt = mapPayloadToAttendance(payload.new);
+          if (newAtt.id) {
+            setAttendanceLogs((prev) => {
+              if (prev.some((a) => a.id === newAtt.id)) {
+                return prev.map((a) => (a.id === newAtt.id ? { ...a, ...newAtt } : a));
+              }
+              return [...prev, newAtt];
+            });
+          }
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          const updatedAtt = mapPayloadToAttendance(payload.new);
+          if (updatedAtt.id) {
+            setAttendanceLogs((prev) => {
+              const exists = prev.some((a) => a.id === updatedAtt.id);
+              if (exists) {
+                return prev.map((a) => (a.id === updatedAtt.id ? { ...a, ...updatedAtt } : a));
+              }
+              return [...prev, updatedAtt];
+            });
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const deleteId = String(payload.old?.id || '');
+          if (deleteId) {
+            setAttendanceLogs((prev) => prev.filter((a) => a.id !== deleteId));
+          }
+        }
+      },
+
+      // (5) Bảng monthly_plan: Cập nhật state trực tiếp
+      onMonthlyPlanChange: (payload) => {
+        if (payload.new && payload.new.plan_data) {
+          setMonthlyPlan(payload.new.plan_data);
+          localStorage.setItem('sunhouse_monthly_plan_v2', JSON.stringify(payload.new.plan_data));
+        }
+      },
+
+      // (6) Bảng monthly_targets: Cập nhật state trực tiếp
+      onMonthlyTargetsChange: (payload) => {
+        if (payload.new && payload.new.targets_data) {
+          setMonthlyTargets(payload.new.targets_data);
+          localStorage.setItem('sunhouse_monthly_targets_v2', JSON.stringify(payload.new.targets_data));
+        }
+      },
+
+      // (7) Bảng monthly_metrics: Cập nhật state trực tiếp
+      onMonthlyMetricsChange: (payload) => {
+        if (payload.new && payload.new.metrics_data) {
+          const yr = Number(payload.new.year);
+          if (yr === 2025) {
+            setMetrics2025(payload.new.metrics_data);
+            localStorage.setItem('sunhouse_metrics_2025_v2', JSON.stringify(payload.new.metrics_data));
+          } else if (yr === 2026) {
+            setMetrics2026(payload.new.metrics_data);
+            localStorage.setItem('sunhouse_metrics_2026_v2', JSON.stringify(payload.new.metrics_data));
+          }
+        }
+      },
+
+      // (8) Bảng daily_reports (Bếp Gas, Lắp ráp, IMEI): Cập nhật state trực tiếp
+      onDailyReportsChange: (payload) => {
+        if (payload.new && payload.new.report_data) {
+          const id = payload.new.id;
+          const repType = payload.new.report_type;
+          if (id === 'gas_daily_reports' || repType === 'gas') {
+            setGasDailyReports(payload.new.report_data);
+            localStorage.setItem('sunhouse_gas_daily_reports_v2', JSON.stringify(payload.new.report_data));
+          } else if (id === 'assembly_daily_reports' || repType === 'assembly') {
+            setAssemblyDailyReports(payload.new.report_data);
+            localStorage.setItem('sunhouse_assembly_daily_reports_v2', JSON.stringify(payload.new.report_data));
+          } else if (id === 'declared_imeis') {
+            setDeclaredImeis(payload.new.report_data);
+            localStorage.setItem('sunhouse_declared_imeis', JSON.stringify(payload.new.report_data));
+          } else if (id === 'scanned_imeis') {
+            setScannedImeis(payload.new.report_data);
+            localStorage.setItem('sunhouse_scanned_imeis', JSON.stringify(payload.new.report_data));
+          }
+        }
+      },
+
+      // (9) Lắng nghe live broadcast thao tác nhập liệu ô trực tiếp từ các máy khác
+      onLiveFormChange: (payload) => {
+        const data = payload?.payload;
+        if (!data || !data.date || !data.shift) return;
+        // Bỏ qua nếu tin nhắn xuất phát từ chính phiên trình duyệt / tab này
+        if (data.senderId === storage.CLIENT_SESSION_ID) return;
+
+        if (data.date === formDateRef.current && data.shift === formShiftRef.current) {
+          isSyncingFromExternalRef.current = true;
+          if (data.items && Array.isArray(data.items)) {
+            const cleanItems = (data.items as FormModelItem[]).map(it => {
+              const cleanHourly: Record<string, number> = {};
+              Object.entries(it.hourlyActuals || {}).forEach(([k, v]) => {
+                if (isValidHourlySlot(k)) cleanHourly[k] = Number(v) || 0;
+              });
+              return { ...it, hourlyActuals: cleanHourly };
+            });
+
+            // Đồng bộ thông minh không ghi đè: Giữ nguyên ô người dùng đang gõ nếu có thao tác gần đây (< 3s)
+            setFormModelItems((prev) => {
+              const active = activeEditingCellRef.current;
+              const isRecentLocalEdit = active && Date.now() - active.timestamp < 3000;
+
+              return prev.map((localItem) => {
+                const incoming = cleanItems.find(
+                  (ci) => ci.productId === localItem.productId || ci.id === localItem.id
+                );
+                if (!incoming) return localItem;
+
+                const mergedHourly = { ...incoming.hourlyActuals };
+                if (isRecentLocalEdit && active && (active.id === localItem.id || active.id === localItem.productId)) {
+                  if (localItem.hourlyActuals[active.slotName] !== undefined) {
+                    mergedHourly[active.slotName] = localItem.hourlyActuals[active.slotName];
+                  }
+                }
+
+                return {
+                  ...localItem,
+                  dailyPlan: incoming.dailyPlan !== undefined ? incoming.dailyPlan : localItem.dailyPlan,
+                  hourlyActuals: mergedHourly,
+                };
+              });
+            });
+          }
+          if (data.slots) {
+            const cleanSlots = (data.slots as string[]).filter(isValidHourlySlot);
+            if (cleanSlots.length > 0) {
+              setFormSlots((prev) => {
+                const isDiff = cleanSlots.some((s) => !prev.includes(s)) || prev.some((s) => !cleanSlots.includes(s));
+                return isDiff ? cleanSlots : prev;
+              });
+            }
+          }
+          if (data.officialRO) setFormOfficialWorkersRO(data.officialRO);
+          if (data.seasonalRO) setFormSeasonalWorkersRO(data.seasonalRO);
+          if (data.officialBG) setFormOfficialWorkersBG(data.officialBG);
+          if (data.seasonalBG) setFormSeasonalWorkersBG(data.seasonalBG);
+          if (data.officialRMA) setFormOfficialWorkersRMA(data.officialRMA);
+          if (data.seasonalRMA) setFormSeasonalWorkersRMA(data.seasonalRMA);
+          if (data.technician) setFormTechnician(data.technician);
+          setTimeout(() => {
+            isSyncingFromExternalRef.current = false;
+          }, 150);
+        }
+      },
+
+      // (10) Lắng nghe broadcast đồng bộ tức thì các bảng khi có thay đổi từ máy/tab khác
+      // TỐI ƯU HÓA: Tuyệt đối KHÔNG query lại toàn bộ bảng để tiết kiệm tối đa Egress và không giật lag!
+      // Các bảng production_logs, attendance_records, workers, products đã được cập nhật từng hàng tức thì qua CDC.
+      onTableSyncChange: async (table, extraPayload) => {
+        try {
+          if (extraPayload?.senderId === storage.CLIENT_SESSION_ID) return;
+
+          if (
+            table === 'production_logs' ||
+            table === 'attendance_records' ||
+            table === 'workers' ||
+            table === 'products'
+          ) {
+            // Đã được xử lý từng phần tử trực tiếp từ Postgres CDC, bỏ qua tải lại toàn bảng
+            return;
+          } else if (table === 'monthly_plan') {
+            if (extraPayload?.data) {
+              setMonthlyPlan(extraPayload.data);
+            }
+          } else if (table === 'monthly_targets') {
+            if (extraPayload?.data) {
+              setMonthlyTargets(extraPayload.data);
+            }
+          } else if (table === 'monthly_metrics') {
+            if (extraPayload?.year && extraPayload?.data) {
+              if (extraPayload.year === 2025) setMetrics2025(extraPayload.data);
+              if (extraPayload.year === 2026) setMetrics2026(extraPayload.data);
+            }
+          } else if (table === 'daily_reports') {
+            // 1 query duy nhất gom toàn bộ 8 bảng báo cáo
+            const allDaily = await storage.getAllDailyReports();
+            if (allDaily.gas && allDaily.gas.length > 0) setGasDailyReports(allDaily.gas);
+            if (allDaily.assembly && allDaily.assembly.length > 0) setAssemblyDailyReports(allDaily.assembly);
+            if (allDaily.monthlyScrap && allDaily.monthlyScrap.length > 0) setMonthlyScrap(allDaily.monthlyScrap);
+            if (allDaily.weeklyScrap && allDaily.weeklyScrap.length > 0) setWeeklyScrap(allDaily.weeklyScrap);
+            if (allDaily.weeklyDclr && allDaily.weeklyDclr.length > 0) setWeeklyDclrError(allDaily.weeklyDclr);
+            if (allDaily.monthlyDclr && allDaily.monthlyDclr.length > 0) setMonthlyDclrError(allDaily.monthlyDclr);
+            if (allDaily.declaredImeis && allDaily.declaredImeis.length > 0) setDeclaredImeis(allDaily.declaredImeis);
+            if (allDaily.scannedImeis && allDaily.scannedImeis.length > 0) setScannedImeis(allDaily.scannedImeis);
+          }
+        } catch (err) {
+          console.warn('[Realtime] Lỗi đồng bộ bảng từ broadcast:', table, err);
+        }
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [refreshFromCloud]);
 
   // === DỮ LIỆU TÍNH TỔNG CHUNG 2 DÂY CHUYỀN ===
   const combinedDailyReports = useMemo<CombinedDailyReportRow[]>(() => {
@@ -1216,7 +2376,26 @@ const [isScrolled, setIsScrolled] = useState(false);
       }
     });
 
-    const activeSlots = formSlots;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const isPast = formDate < todayStr;
+    const isToday = formDate === todayStr;
+    const currentHour = new Date().getHours();
+
+    const activeSlots = formSlots.filter(slot => {
+      if (!isValidHourlySlot(slot)) return false;
+      const wRO = (formOfficialWorkersRO[slot] || 0) + (formSeasonalWorkersRO[slot] || 0);
+      const wRMA = (formOfficialWorkersRMA[slot] || 0) + (formSeasonalWorkersRMA[slot] || 0);
+      const wBG = (formOfficialWorkersBG[slot] || 0) + (formSeasonalWorkersBG[slot] || 0);
+      if (wRO > 0 || wRMA > 0 || wBG > 0) return true;
+      const hasActual = formModelItems.some(item => (item.hourlyActuals[slot] || 0) > 0);
+      if (hasActual) return true;
+
+      if (isPast) return true;
+      if (!isToday) return true;
+      const slotStartHour = parseInt(slot.split("H")[0]);
+      return !isNaN(slotStartHour) && slotStartHour <= currentHour;
+    });
+
     let totalStandardRO = 0;
     let totalStandardRMA = 0;
     let totalStandardBG = 0;
@@ -1234,8 +2413,11 @@ const [isScrolled, setIsScrolled] = useState(false);
     const avgProductivityRMA = totalStandardRMA > 0 ? Number(((totalEqQtyRMA / totalStandardRMA) * 100).toFixed(1)) : 0;
     const avgProductivityBG = totalStandardBG > 0 ? Number(((totalEqQtyBG / totalStandardBG) * 100).toFixed(1)) : 0;
 
-    const totalStandardCombined = totalStandardRO + totalStandardRMA + totalStandardBG;
-    const avgProductivity = totalStandardCombined > 0 ? Number(((totalEqQty / totalStandardCombined) * 100).toFixed(1)) : 0;
+    // NSLĐ phân xưởng lấy theo bảng Mục tiêu sản xuất (monthlyTargets)
+    const formYear = parseInt(formDate.split("-")[0], 10) || selectedYear;
+    const formMonth = parseInt(formDate.split("-")[1], 10) || selectedMonth;
+    const targetKey = `${formYear}-${formMonth}`;
+    const avgProductivity = monthlyTargets[targetKey] !== undefined ? monthlyTargets[targetKey] : (monthlyTargets[`${selectedYear}-${selectedMonth}`] || 110);
 
     return {
       totalActualQty,
@@ -1264,7 +2446,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       avgProductivityBG,
       totalRevenue,
     };
-  }, [formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, formSlots, formWorkersCount, formWorkersCountRO, formWorkersCountRMA, formWorkersCountBG, products, monthlyPlan, productionLogs, formDate]);
+  }, [formModelItems, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG, formSlots, formWorkersCount, formWorkersCountRO, formWorkersCountRMA, formWorkersCountBG, products, monthlyPlan, productionLogs, formDate, monthlyTargets, selectedYear, selectedMonth]);
   // --- LOGIC TÍNH TOÁN DỰA TRÊN NHẬT KÝ CA MỚI
   const processedMetrics2026 = useMemo(() => {
     // Clone số liệu 2026 từ biểu đồ đã cập nhật
@@ -2913,6 +4095,168 @@ const [isScrolled, setIsScrolled] = useState(false);
   }, [formSlots, formModelItems, products, formOfficialWorkersRO, formSeasonalWorkersRO, formOfficialWorkersRMA, formSeasonalWorkersRMA, formOfficialWorkersBG, formSeasonalWorkersBG]);
 
   // --- EVENT HANDLERS ---
+  const autoSyncAttendanceToForm = (targetDate: string, force = false) => {
+    // 1. Dữ liệu cũ đã lưu: Tuyệt đối KHÔNG tự động thay đổi/ghi đè nếu là ngày cũ trong quá khứ đã có nhật ký,
+    // trừ khi người dùng chủ động nhấn nút "Đồng bộ từ điểm danh" (force = true)
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, '0') + "-" + String(today.getDate()).padStart(2, '0');
+    const isPastDate = targetDate < todayStr;
+    const hasSavedLogs = productionLogs.some(log => log.date === targetDate);
+
+    if (isPastDate && hasSavedLogs && !force) {
+      return;
+    }
+
+    const dateLogs = attendanceLogs.filter(a => a.date === targetDate);
+    if (dateLogs.length === 0) return;
+
+    const newOffRO: { [slot: string]: number } = { ...formOfficialWorkersRO };
+    const newSeasRO: { [slot: string]: number } = { ...formSeasonalWorkersRO };
+    const newOffBG: { [slot: string]: number } = { ...formOfficialWorkersBG };
+    const newSeasBG: { [slot: string]: number } = { ...formSeasonalWorkersBG };
+    const newOffRMA: { [slot: string]: number } = { ...formOfficialWorkersRMA };
+    const newSeasRMA: { [slot: string]: number } = { ...formSeasonalWorkersRMA };
+
+    formSlots.forEach(s => {
+      newOffRO[s] = 0;
+      newSeasRO[s] = 0;
+      newOffBG[s] = 0;
+      newSeasBG[s] = 0;
+      newOffRMA[s] = 0;
+      newSeasRMA[s] = 0;
+    });
+
+    const slotStartHours: Record<string, number> = {
+      "8H - 9H": 8, "9H - 10H": 9, "10H - 11H": 10, "11H - 12H": 11,
+      "13H - 14H": 13, "14H - 15H": 14, "15H - 16H": 15, "16H - 17H": 16,
+      "17H - 18H": 17, "18H - 19H": 18, "19H - 20H": 19, "20H - 21H": 20
+    };
+
+    // Nhóm logs theo workerId để xử lý chính xác 1 nhân sự / 1 slot
+    const logsByWorker = dateLogs.reduce((acc, log) => {
+      if (!acc[log.workerId]) acc[log.workerId] = [];
+      acc[log.workerId].push(log);
+      return acc;
+    }, {} as Record<string, AttendanceRecord[]>);
+
+    Object.keys(logsByWorker).forEach(workerId => {
+      const w = workers.find(x => x.id === workerId);
+      if (!w) return;
+
+      const wLogs = logsByWorker[workerId];
+
+      formSlots.forEach(slot => {
+        let slotStart = slotStartHours[slot];
+        if (slotStart === undefined) {
+          const match = slot.match(/^(\d+)H/i);
+          if (match) slotStart = parseInt(match[1], 10);
+        }
+        if (slotStart === undefined) return;
+        const slotEnd = slotStart + 1;
+
+        // Tính tổng thời gian worker này làm việc trong slot, chia theo Division
+        let durationRO = 0;
+        let durationBG = 0;
+        let durationRMA = 0;
+        let activeInSlot = false;
+
+        wLogs.forEach(log => {
+          const checkInDate = new Date(log.checkInTime);
+          const checkinDecimal = checkInDate.getHours() + (checkInDate.getMinutes() / 60);
+          const checkOutDate = log.checkOutTime ? new Date(log.checkOutTime) : null;
+          // Nếu chưa check-out, xem như nhân sự vẫn đang làm việc suốt ca (24h)
+          const checkoutDecimal = checkOutDate ? checkOutDate.getHours() + (checkOutDate.getMinutes() / 60) : 24;
+          const actualDivision = log.scannedDivision || w.division || 'RO';
+
+          const overlapStart = Math.max(slotStart, checkinDecimal);
+          const overlapEnd = Math.min(slotEnd, checkoutDecimal);
+          const workDuration = Math.max(0, overlapEnd - overlapStart);
+
+          if (workDuration > 0) {
+            if (actualDivision === 'RO') durationRO += workDuration;
+            else if (actualDivision === 'BG') durationBG += workDuration;
+            else if (actualDivision === 'RMA') durationRMA += workDuration;
+          }
+
+          // Kiểm tra xem nhân sự có mặt trong slot này không
+          if (checkinDecimal < slotEnd && checkoutDecimal > slotStart) {
+            activeInSlot = true;
+          }
+        });
+
+        // Tìm bộ phận mà worker dành nhiều thời gian nhất trong slot này
+        let majorityDivision: WorkerDivision = 'RO';
+        let maxDuration = durationRO;
+
+        if (durationBG > maxDuration) {
+          majorityDivision = 'BG';
+          maxDuration = durationBG;
+        }
+        if (durationRMA > maxDuration) {
+          majorityDivision = 'RMA';
+          maxDuration = durationRMA;
+        }
+
+        if (maxDuration === 0 && activeInSlot) {
+          const latestLog = wLogs[wLogs.length - 1];
+          majorityDivision = (latestLog?.scannedDivision || w.division || 'RO') as WorkerDivision;
+        }
+
+        // Quy tắc tính công:
+        // - Làm từ 20 phút trở lên trong khung giờ (>= 0.33)
+        // - HOẶC có mặt trong slot và chưa check out
+        const shouldCount = maxDuration >= 0.33 || (activeInSlot && (!wLogs[wLogs.length - 1].checkOutTime || maxDuration > 0));
+
+        if (shouldCount) {
+          // Quy tắc phân loại loại nhân sự:
+          // 1. NS chính thức (OFFICIAL) -> Tính vào NS chính thức
+          // 2. NS thử việc (PROBATION) -> VẪN TÍNH LÀ NS CHÍNH THỨC theo yêu cầu
+          // 3. NS thời vụ (SEASONAL) -> Tính vào NS thời vụ
+          const isOfficialOrProbation = w.type === 'OFFICIAL' || w.type === 'PROBATION';
+          const isSeasonal = w.type === 'SEASONAL';
+
+          if (majorityDivision === 'RO') {
+            if (isOfficialOrProbation) newOffRO[slot] = (newOffRO[slot] || 0) + 1;
+            else if (isSeasonal) newSeasRO[slot] = (newSeasRO[slot] || 0) + 1;
+            else newOffRO[slot] = (newOffRO[slot] || 0) + 1;
+          } else if (majorityDivision === 'BG') {
+            if (isOfficialOrProbation) newOffBG[slot] = (newOffBG[slot] || 0) + 1;
+            else if (isSeasonal) newSeasBG[slot] = (newSeasBG[slot] || 0) + 1;
+            else newOffBG[slot] = (newOffBG[slot] || 0) + 1;
+          } else if (majorityDivision === 'RMA') {
+            if (isOfficialOrProbation) newOffRMA[slot] = (newOffRMA[slot] || 0) + 1;
+            else if (isSeasonal) newSeasRMA[slot] = (newSeasRMA[slot] || 0) + 1;
+            else newOffRMA[slot] = (newOffRMA[slot] || 0) + 1;
+          }
+        }
+      });
+    });
+
+    setFormOfficialWorkersRO(newOffRO);
+    setFormSeasonalWorkersRO(newSeasRO);
+    setFormOfficialWorkersBG(newOffBG);
+    setFormSeasonalWorkersBG(newSeasBG);
+    setFormOfficialWorkersRMA(newOffRMA);
+    setFormSeasonalWorkersRMA(newSeasRMA);
+  };
+
+  useEffect(() => {
+    // Tự động đồng bộ báo cáo khi có thay đổi điểm danh
+    if (attendanceLogs.length > 0) {
+      autoSyncAttendanceToForm(formDate);
+    }
+  }, [attendanceLogs, formDate, formSlots.length]);
+
+  const syncAttendanceToForm = () => {
+    const dateLogs = attendanceLogs.filter(a => a.date === formDate);
+    if (dateLogs.length === 0) {
+      alert("Không có dữ liệu điểm danh nào cho ngày " + formDate);
+      return;
+    }
+    autoSyncAttendanceToForm(formDate, true);
+    alert(`Đã đồng bộ ${dateLogs.length} lượt điểm danh vào bảng ghi nhật ký ca ngày ${formDate}!`);
+  };
+
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value;
     if (!newDate) return;
@@ -3022,12 +4366,27 @@ const [isScrolled, setIsScrolled] = useState(false);
       };
     });
 
+    storage.upsertProductionLogs(newLogs);
+    let updatedLogs: ProductionLog[] = [];
     setProductionLogs((prev) => {
       const filtered = prev.filter((log) => log.date !== formDate || log.shift !== formShift);
-      return [...newLogs, ...filtered];
+      updatedLogs = [...newLogs, ...filtered];
+      return updatedLogs;
     });
 
-    setFormMessage(`✅ Đã lưu ${newLogs.length} bản ghi nhật ký ca thành công & cập nhật KPI!`);
+    // Tự động đồng bộ số liệu vào dữ liệu lịch sử các tháng
+    setTimeout(() => {
+      if (updatedLogs.length > 0) {
+        syncHistoricalMetricsWithLogs(updatedLogs);
+      }
+    }, 50);
+
+    const logMonth = parseInt(formDate.split("-")[1], 10) || 1;
+    const logYear = parseInt(formDate.split("-")[0], 10) || 2026;
+    setFormMessage(`✅ Đã lưu ${newLogs.length} bản ghi nhật ký ca & đồng bộ thành công dữ liệu lịch sử (Tháng ${logMonth}/${logYear})!`);
+
+    // Xóa bản nháp (draft) sau khi đã lưu thành công
+    storage.clearFormDraft(formDate, formShift);
 
     // Reset form fields
     resetFormFields();
@@ -3035,7 +4394,7 @@ const [isScrolled, setIsScrolled] = useState(false);
     // Xóa thông báo sau 4 giây
     setTimeout(() => {
       setFormMessage("");
-    }, 4000);
+    }, 4500);
   };
 
   const resetFormFields = () => {
@@ -3057,8 +4416,18 @@ const [isScrolled, setIsScrolled] = useState(false);
   };
 
   const handleDeleteLog = (id: string) => {
-    setProductionLogs((prev) => prev.filter((log) => log.id !== id));
-    setFormMessage("❌ Đã xóa bản ghi nhật ký ca thành công.");
+    storage.deleteProductionLog(id);
+    let remainingLogs: ProductionLog[] = [];
+    setProductionLogs((prev) => {
+      remainingLogs = prev.filter((log) => log.id !== id);
+      return remainingLogs;
+    });
+
+    setTimeout(() => {
+      syncHistoricalMetricsWithLogs(remainingLogs);
+    }, 50);
+
+    setFormMessage("❌ Đã xóa bản ghi nhật ký ca & cập nhật lại dữ liệu lịch sử.");
     setTimeout(() => {
       setFormMessage("");
     }, 3500);
@@ -3092,13 +4461,20 @@ const [isScrolled, setIsScrolled] = useState(false);
     });
     setFormSlots(sortedSlots);
 
-    // Tái cấu trúc formModelItems
-    const newFormModelItems: FormModelItem[] = logsForDate.map(log => ({
-      id: "item-" + log.productId + "-" + Date.now() + Math.random(),
-      productId: log.productId,
-      dailyPlan: 0,
-      hourlyActuals: log.hourlyActuals || {}
-    }));
+    // Tái cấu trúc formModelItems có liên kết với KHSX ngày từ monthlyPlan
+    const [editYear, editMonth, editDay] = date.split("-");
+    const ym = `${editYear}-${editMonth}`;
+    const dayNum = parseInt(editDay, 10);
+
+    const newFormModelItems: FormModelItem[] = logsForDate.map(log => {
+      const planVal = (!isNaN(dayNum) && monthlyPlan[ym]?.[log.productId]?.[dayNum]) || 0;
+      return {
+        id: "item-" + log.productId + "-" + Date.now() + Math.random(),
+        productId: log.productId,
+        dailyPlan: planVal,
+        hourlyActuals: log.hourlyActuals || {}
+      };
+    });
     setFormModelItems(newFormModelItems);
 
     // Khôi phục nhân sự
@@ -3114,33 +4490,44 @@ const [isScrolled, setIsScrolled] = useState(false);
       const isMLN = log.lineId === "line-mln-01";
       const isBG = log.lineId === "line-bg-02";
 
+      const synthesizeWorkers = (log: ProductionLog) => {
+        let official = log.hourlyOfficialWorkers || {};
+        let seasonal = log.hourlySeasonalWorkers || {};
+        
+        // If no official/seasonal breakdown but we have hourlyWorkers (old records)
+        if (Object.keys(official).length === 0 && Object.keys(seasonal).length === 0 && log.hourlyWorkers && Object.keys(log.hourlyWorkers).length > 0) {
+          const totalOff = log.officialWorkers || 0;
+          const totalSeas = log.seasonalWorkers || 0;
+          const total = totalOff + totalSeas;
+          
+          if (total > 0) {
+            const offRatio = totalOff / total;
+            const seasRatio = totalSeas / total;
+            
+            Object.keys(log.hourlyWorkers).forEach(slot => {
+              const hw = log.hourlyWorkers[slot];
+              official[slot] = Number((hw * offRatio).toFixed(3));
+              seasonal[slot] = Number((hw * seasRatio).toFixed(3));
+            });
+          } else {
+            official = { ...log.hourlyWorkers }; // fallback to all official
+          }
+        }
+        return { official, seasonal };
+      };
+
       if (isRMA) {
-        if (log.hourlyOfficialWorkers) {
-          setFormOfficialWorkersRMA(prev => ({ ...prev, ...log.hourlyOfficialWorkers }));
-        } else if (log.hourlyWorkers) {
-          setFormOfficialWorkersRMA(prev => ({ ...prev, ...log.hourlyWorkers }));
-        }
-        if (log.hourlySeasonalWorkers) {
-          setFormSeasonalWorkersRMA(prev => ({ ...prev, ...log.hourlySeasonalWorkers }));
-        }
+        const { official, seasonal } = synthesizeWorkers(log);
+        setFormOfficialWorkersRMA(prev => ({ ...prev, ...official }));
+        setFormSeasonalWorkersRMA(prev => ({ ...prev, ...seasonal }));
       } else if (isMLN) {
-        if (log.hourlyOfficialWorkers) {
-          setFormOfficialWorkersRO(prev => ({ ...prev, ...log.hourlyOfficialWorkers }));
-        } else if (log.hourlyWorkers) {
-          setFormOfficialWorkersRO(prev => ({ ...prev, ...log.hourlyWorkers }));
-        }
-        if (log.hourlySeasonalWorkers) {
-          setFormSeasonalWorkersRO(prev => ({ ...prev, ...log.hourlySeasonalWorkers }));
-        }
+        const { official, seasonal } = synthesizeWorkers(log);
+        setFormOfficialWorkersRO(prev => ({ ...prev, ...official }));
+        setFormSeasonalWorkersRO(prev => ({ ...prev, ...seasonal }));
       } else if (isBG) {
-        if (log.hourlyOfficialWorkers) {
-          setFormOfficialWorkersBG(prev => ({ ...prev, ...log.hourlyOfficialWorkers }));
-        } else if (log.hourlyWorkers) {
-          setFormOfficialWorkersBG(prev => ({ ...prev, ...log.hourlyWorkers }));
-        }
-        if (log.hourlySeasonalWorkers) {
-          setFormSeasonalWorkersBG(prev => ({ ...prev, ...log.hourlySeasonalWorkers }));
-        }
+        const { official, seasonal } = synthesizeWorkers(log);
+        setFormOfficialWorkersBG(prev => ({ ...prev, ...official }));
+        setFormSeasonalWorkersBG(prev => ({ ...prev, ...seasonal }));
       }
     });
 
@@ -3349,6 +4736,10 @@ const [isScrolled, setIsScrolled] = useState(false);
   };
 
   const handleUpdateItemHourly = (id: string, slotName: string, qty: number) => {
+    // Đánh dấu ô đang được chỉnh sửa để không bị bất kỳ tiến trình nền hay broadcast nào ghi đè
+    activeEditingCellRef.current = { id, slotName, timestamp: Date.now() };
+
+    // Cập nhật state cục bộ ngay lập tức (0ms delay), không gửi request Supabase khi đang gõ phím
     setFormModelItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
@@ -3361,6 +4752,146 @@ const [isScrolled, setIsScrolled] = useState(false);
         };
       })
     );
+  };
+
+  // Cơ chế mới: Sửa số nào, chỉ khi nhấn ENTER (hoặc blur khỏi ô) mới lưu lên database Supabase
+  const handleCommitItemHourly = async (id: string, slotName: string, customQty?: number) => {
+    // Giải phóng đánh dấu ô chỉnh sửa sau một khoảng ngắn
+    setTimeout(() => {
+      if (activeEditingCellRef.current?.id === id && activeEditingCellRef.current?.slotName === slotName) {
+        activeEditingCellRef.current = null;
+      }
+    }, 1200);
+
+    const item = formModelItems.find((it) => it.id === id);
+    if (!item) return;
+
+    const qty = customQty !== undefined ? customQty : (item.hourlyActuals[slotName] || 0);
+    const p = products.find((x) => x.id === item.productId);
+    const targetProdId = p?.id || item.productId;
+    const targetProdName = p?.name || "";
+    const targetModelCode = p ? (getProductModelCode(p.name) || p.code || p.id) : item.productId;
+    const targetDept = p?.group || (filterDivision !== "ALL" ? filterDivision : "RO");
+    const timeSlot = slotName.replace(/\s+/g, '');
+
+    const updatedHourly = {
+      ...item.hourlyActuals,
+      [slotName]: qty,
+    };
+
+    try {
+      const { error } = await storage.upsertHourlyProductionLog({
+        work_date: formDate,
+        department: targetDept,
+        product_code: targetModelCode,
+        shift: timeSlot,
+        quantity: qty,
+        status: 'OK',
+        productId: targetProdId,
+        productName: targetProdName,
+        allHourlyActuals: updatedHourly,
+      });
+
+      if (error) {
+        showToastError(error.message || 'Lỗi lưu lên database Supabase');
+      } else {
+        showToastSuccess(`Đã lưu [${targetModelCode} • ${slotName}: ${qty}] lên Supabase ✓`);
+
+        // Phát realtime broadcast tới các máy / tab khác
+        const updatedItems = formModelItems.map((it) =>
+          it.id === id ? { ...it, hourlyActuals: updatedHourly } : it
+        );
+        storage.sendLiveFormBroadcast({
+          date: formDate,
+          shift: formShift,
+          slots: formSlots,
+          items: updatedItems,
+          officialRO: formOfficialWorkersRO,
+          seasonalRO: formSeasonalWorkersRO,
+          officialBG: formOfficialWorkersBG,
+          seasonalBG: formSeasonalWorkersBG,
+          officialRMA: formOfficialWorkersRMA,
+          seasonalRMA: formSeasonalWorkersRMA,
+          technician: formTechnician,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch (err: any) {
+      console.warn('Lỗi khi lưu ô sản lượng lên Supabase:', err);
+    }
+  };
+
+  const handleCommitItemDailyPlan = async (id: string, planVal: number) => {
+    const item = formModelItems.find(it => it.id === id);
+    if (!item) return;
+
+    const p = products.find(x => x.id === item.productId);
+    const targetProdId = p?.id || item.productId;
+    const targetModelCode = p ? (getProductModelCode(p.name) || p.code || p.id) : item.productId;
+
+    if (formDate) {
+      const [year, month, day] = formDate.split("-");
+      const ym = `${year}-${month}`;
+      const dayNum = parseInt(day, 10);
+      if (!isNaN(dayNum)) {
+        setMonthlyPlan(prev => {
+          const next = { ...prev };
+          if (!next[ym]) next[ym] = {};
+          if (!next[ym][targetProdId]) next[ym][targetProdId] = {};
+          next[ym][targetProdId] = {
+            ...next[ym][targetProdId],
+            [dayNum]: planVal
+          };
+          storage.saveMonthlyPlan(next);
+          return next;
+        });
+      }
+    }
+
+    const updatedItems = formModelItems.map(it => it.id === id ? { ...it, dailyPlan: planVal } : it);
+    const draftData: storage.FormDraftData = {
+      date: formDate,
+      shift: formShift,
+      slots: formSlots,
+      items: updatedItems,
+      officialRO: formOfficialWorkersRO,
+      seasonalRO: formSeasonalWorkersRO,
+      officialBG: formOfficialWorkersBG,
+      seasonalBG: formSeasonalWorkersBG,
+      officialRMA: formOfficialWorkersRMA,
+      seasonalRMA: formSeasonalWorkersRMA,
+      technician: formTechnician,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await storage.saveFormDraft(draftData);
+    storage.sendLiveFormBroadcast(draftData);
+    showToastSuccess(`Đã lưu KHSX [${targetModelCode}: ${planVal}] lên Supabase ✓`);
+  };
+
+  const handleCommitWorkerDraft = async () => {
+    const draftData: storage.FormDraftData = {
+      date: formDate,
+      shift: formShift,
+      slots: formSlots,
+      items: formModelItems,
+      officialRO: formOfficialWorkersRO,
+      seasonalRO: formSeasonalWorkersRO,
+      officialBG: formOfficialWorkersBG,
+      seasonalBG: formSeasonalWorkersBG,
+      officialRMA: formOfficialWorkersRMA,
+      seasonalRMA: formSeasonalWorkersRMA,
+      technician: formTechnician,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await storage.saveFormDraft(draftData);
+      showToastSuccess("Đã lưu nhân sự ca lên Supabase ✓");
+      storage.sendLiveFormBroadcast(draftData);
+    } catch (err: any) {
+      showToastError(err?.message || 'Lỗi lưu nhân sự lên Supabase');
+    }
   };
 
   // === XỬ LÝ LƯU EXCEL BÁO CÁO HÀNG NGÀY CHUYÊN NGHIỆP ===
@@ -3611,21 +5142,45 @@ const [isScrolled, setIsScrolled] = useState(false);
 
     if (editingProductId) {
       // Update existing
-      setProducts(prev => prev.map(p => {
-        if (p.id === editingProductId) {
-          return {
-            ...p,
-            name: prodFormName,
-            code: prodFormCode,
-            group: prodFormGroup,
-            factor: Number(prodFormFactor),
-            price: Number(prodFormPrice),
-            description: prodFormDescription
-          };
+      const updatedProduct: ProductDefinition = {
+        id: editingProductId,
+        name: prodFormName,
+        code: prodFormCode,
+        group: prodFormGroup,
+        factor: Number(prodFormFactor),
+        price: Number(prodFormPrice),
+        description: prodFormDescription
+      };
+      storage.saveProduct(updatedProduct);
+      setProducts(prev => prev.map(p => p.id === editingProductId ? updatedProduct : p));
+
+      // Đồng bộ liên kết tự động tới tất cả các bản ghi nhật ký ca có mã sản phẩm này
+      setProductionLogs(prevLogs => {
+        let hasChanges = false;
+        const updatedLogs = prevLogs.map(log => {
+          if (log.productId === editingProductId) {
+            hasChanges = true;
+            const newFactor = Number(prodFormFactor);
+            const newEq = Math.round((log.actualUnits || 0) * newFactor);
+            return {
+              ...log,
+              productName: prodFormName,
+              productGroup: prodFormGroup,
+              equivalentFactor: newFactor,
+              equivalentProducts: newEq
+            };
+          }
+          return log;
+        });
+
+        if (hasChanges) {
+          storage.saveAllProductionLogs(updatedLogs);
+          setTimeout(() => syncHistoricalMetricsWithLogs(updatedLogs), 50);
         }
-        return p;
-      }));
-      setProdFormMessage("✅ Đã cập nhật sản phẩm thành công!");
+        return updatedLogs;
+      });
+
+      setProdFormMessage("✅ Đã cập nhật sản phẩm & tự động liên kết đồng bộ toàn bộ Nhật ký ca!");
     } else {
       // Add new
       const newId = `prod-new-${Date.now()}`;
@@ -3638,6 +5193,7 @@ const [isScrolled, setIsScrolled] = useState(false);
         price: Number(prodFormPrice),
         description: prodFormDescription
       };
+      storage.saveProduct(newProduct);
       setProducts(prev => [...prev, newProduct]);
       setProdFormMessage("✅ Đã thêm sản phẩm mới thành công!");
     }
@@ -3648,6 +5204,7 @@ const [isScrolled, setIsScrolled] = useState(false);
   };
 
   const handleDeleteProduct = (id: string) => {
+    storage.deleteProduct(id);
     setProducts(prev => prev.filter(p => p.id !== id));
     setProdFormMessage("❌ Đã xóa sản phẩm thành công.");
     setTimeout(() => {
@@ -3777,6 +5334,8 @@ const [isScrolled, setIsScrolled] = useState(false);
   const handleConfirmExcelImport = () => {
     if (parsedExcelProducts.length === 0) return;
 
+    storage.upsertProducts(parsedExcelProducts);
+
     setProducts((prev) => {
       const existingMap = new Map<string, ProductDefinition>(prev.map((p) => [p.code.toLowerCase(), p]));
 
@@ -3798,7 +5357,37 @@ const [isScrolled, setIsScrolled] = useState(false);
         }
       });
 
-      return Array.from(existingMap.values());
+      const updatedProductsList = Array.from(existingMap.values());
+      const prodMap = new Map<string, ProductDefinition>(updatedProductsList.map((p) => [p.id, p]));
+      const prodCodeMap = new Map<string, ProductDefinition>(updatedProductsList.map((p) => [p.code.toLowerCase(), p]));
+
+      // Tự động đồng bộ liên kết với productionLogs
+      setProductionLogs((prevLogs) => {
+        let hasLogsUpdated = false;
+        const updatedLogs = prevLogs.map((log) => {
+          const matched = prodMap.get(log.productId) || (log.productName ? prodCodeMap.get(log.productName.toLowerCase()) : undefined);
+          if (matched) {
+            hasLogsUpdated = true;
+            return {
+              ...log,
+              productId: matched.id,
+              productName: matched.name,
+              productGroup: matched.group,
+              equivalentFactor: matched.factor,
+              equivalentProducts: Math.round((log.actualUnits || 0) * matched.factor),
+            };
+          }
+          return log;
+        });
+
+        if (hasLogsUpdated) {
+          storage.saveAllProductionLogs(updatedLogs);
+          setTimeout(() => syncHistoricalMetricsWithLogs(updatedLogs), 50);
+        }
+        return updatedLogs;
+      });
+
+      return updatedProductsList;
     });
 
     setExcelImportSuccess(`🎉 Đã nhập/cập nhật thành công ${parsedExcelProducts.length} sản phẩm từ file Excel!`);
@@ -3986,6 +5575,82 @@ const [isScrolled, setIsScrolled] = useState(false);
     XLSX.writeFile(wb, `KHSX_Thang_${month}_${year}_${filterDivision}.xlsx`);
   };
 
+  const syncEntireSystem = async () => {
+    try {
+      setSyncStatus('syncing');
+      setSyncMessage('Đang đồng bộ toàn bộ dữ liệu hệ thống...');
+
+      // 1. Đồng bộ dữ liệu lịch sử từ nhật ký ca
+      const currentLogs = productionLogs;
+      syncHistoricalMetricsWithLogs(currentLogs);
+
+      // 2. Lưu trữ toàn bộ dữ liệu vào Storage & Cloud nếu có kết nối
+      await Promise.allSettled([
+        storage.saveAllProductionLogs(productionLogs),
+        storage.saveMonthlyMetrics(2025, metrics2025),
+        storage.saveMonthlyMetrics(2026, metrics2026),
+        storage.saveMonthlyPlan(monthlyPlan),
+        storage.saveMonthlyTargets(monthlyTargets),
+        storage.saveGasDailyReports(gasDailyReports),
+        storage.saveAssemblyDailyReports(assemblyDailyReports),
+        storage.saveDeclaredImeis(declaredImeis),
+        storage.saveScannedImeis(scannedImeis),
+      ]);
+
+      setSyncStatus(isSupabaseConfigured ? 'synced' : 'local');
+      setSyncMessage(isSupabaseConfigured ? 'Đã đồng bộ toàn bộ hệ thống lên Cloud' : 'Đã đồng bộ toàn bộ hệ thống (Bộ nhớ máy)');
+      setFormMessage('🎉 Đã đồng bộ liên kết toàn bộ dữ liệu và tính năng thành công!');
+      setTimeout(() => setFormMessage(''), 4000);
+    } catch (error) {
+      console.error('Lỗi khi đồng bộ toàn hệ thống:', error);
+      setSyncStatus('error');
+      setSyncMessage('Lỗi khi đồng bộ dữ liệu');
+    }
+  };
+
+  const [restoreMode, setRestoreMode] = useState<'overwrite' | 'merge'>('overwrite');
+
+  const handleExportJsonBackup = () => {
+    try {
+      const backupPayload = {
+        version: "2.0",
+        app: "Sunhouse Production Management",
+        exportDate: new Date().toISOString(),
+        productionLogs,
+        products,
+        workers,
+        attendanceLogs,
+        monthlyTargets,
+        monthlyPlan,
+        gasDailyReports,
+        assemblyDailyReports,
+        metrics2025,
+        metrics2026,
+        monthlyScrap,
+        weeklyScrap,
+        weeklyDclrError,
+        monthlyDclrError,
+        declaredImeis,
+        scannedImeis
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupPayload, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `Sao_Luu_Toan_Bo_He_Thong_Sunhouse_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+
+      setFormMessage("✅ Đã xuất toàn bộ dữ liệu hệ thống ra file JSON thành công!");
+      setTimeout(() => setFormMessage(""), 3500);
+    } catch (err) {
+      console.error(err);
+      setFormMessage("❌ Lỗi khi xuất dữ liệu JSON!");
+      setTimeout(() => setFormMessage(""), 3500);
+    }
+  };
+
   const handleExportFullBackup = () => {
     const wb = XLSX.utils.book_new();
 
@@ -4001,7 +5666,20 @@ const [isScrolled, setIsScrolled] = useState(false);
     const wsProducts = XLSX.utils.json_to_sheet(products);
     XLSX.utils.book_append_sheet(wb, wsProducts, "Products");
 
-    // 3. Monthly Plan (Flattened)
+    // 3. Workers (Nhân sự)
+    const wsWorkers = XLSX.utils.json_to_sheet(workers);
+    XLSX.utils.book_append_sheet(wb, wsWorkers, "Workers");
+
+    // 4. Attendance Logs (Điểm danh)
+    const wsAttendance = XLSX.utils.json_to_sheet(attendanceLogs);
+    XLSX.utils.book_append_sheet(wb, wsAttendance, "Attendance_Logs");
+
+    // 5. Monthly Targets (Mục tiêu NSLĐ)
+    const targetsArray = Object.entries(monthlyTargets).map(([key, val]) => ({ key, targetValue: val }));
+    const wsTargets = XLSX.utils.json_to_sheet(targetsArray);
+    XLSX.utils.book_append_sheet(wb, wsTargets, "Monthly_Targets");
+
+    // 6. Monthly Plan (Flattened)
     const flattenedPlan: any[] = [];
     Object.keys(monthlyPlan).forEach(ym => {
       Object.keys(monthlyPlan[ym]).forEach(prodId => {
@@ -4015,21 +5693,21 @@ const [isScrolled, setIsScrolled] = useState(false);
     const wsPlan = XLSX.utils.json_to_sheet(flattenedPlan);
     XLSX.utils.book_append_sheet(wb, wsPlan, "Monthly_Plan");
 
-    // 4. Gas Daily Reports
+    // 7. Gas Daily Reports
     const wsGas = XLSX.utils.json_to_sheet(gasDailyReports);
     XLSX.utils.book_append_sheet(wb, wsGas, "Gas_Daily_Reports");
 
-    // 5. Assembly Daily Reports
+    // 8. Assembly Daily Reports
     const wsAssembly = XLSX.utils.json_to_sheet(assemblyDailyReports);
     XLSX.utils.book_append_sheet(wb, wsAssembly, "Assembly_Daily_Reports");
 
-    // 6. Metrics 2025 & 2026
+    // 9. Metrics 2025 & 2026
     const wsMetrics2025 = XLSX.utils.json_to_sheet(metrics2025);
     XLSX.utils.book_append_sheet(wb, wsMetrics2025, "Metrics_2025");
     const wsMetrics2026 = XLSX.utils.json_to_sheet(metrics2026);
     XLSX.utils.book_append_sheet(wb, wsMetrics2026, "Metrics_2026");
 
-    // 7. Other Metrics
+    // 10. Scrap & Quality Reports
     const wsMonthlyScrap = XLSX.utils.json_to_sheet(monthlyScrap);
     XLSX.utils.book_append_sheet(wb, wsMonthlyScrap, "Monthly_Scrap");
     const wsWeeklyScrap = XLSX.utils.json_to_sheet(weeklyScrap);
@@ -4039,8 +5717,18 @@ const [isScrolled, setIsScrolled] = useState(false);
     const wsMonthlyDclrError = XLSX.utils.json_to_sheet(monthlyDclrError);
     XLSX.utils.book_append_sheet(wb, wsMonthlyDclrError, "Monthly_DCLR_Error");
 
-    XLSX.writeFile(wb, `Sao_Luu_Toan_Bo_Bao_Cao_Sunhouse_${new Date().toISOString().split('T')[0]}.xlsx`);
-    setFormMessage("✅ Đã xuất toàn bộ dữ liệu báo cáo ra file Excel thành công!");
+    // 11. Declared & Scanned IMEIs
+    if (declaredImeis.length > 0) {
+      const wsDeclaredImei = XLSX.utils.json_to_sheet(declaredImeis);
+      XLSX.utils.book_append_sheet(wb, wsDeclaredImei, "Declared_IMEIs");
+    }
+    if (scannedImeis.length > 0) {
+      const wsScannedImei = XLSX.utils.json_to_sheet(scannedImeis);
+      XLSX.utils.book_append_sheet(wb, wsScannedImei, "Scanned_IMEIs");
+    }
+
+    XLSX.writeFile(wb, `Sao_Luu_Toan_Bo_He_Thong_Sunhouse_${new Date().toISOString().split('T')[0]}.xlsx`);
+    setFormMessage("✅ Đã xuất toàn bộ dữ liệu hệ thống (11 bảng) ra file Excel thành công!");
     setTimeout(() => setFormMessage(""), 3500);
   };
 
@@ -4048,88 +5736,322 @@ const [isScrolled, setIsScrolled] = useState(false);
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const isJsonFile = file.name.toLowerCase().endsWith('.json');
     const reader = new FileReader();
-    reader.onload = (evt) => {
+
+    reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
-        
-        // Helper to get sheet data
-        const getSheetData = (name: string) => {
-          const ws = wb.Sheets[name];
-          if (!ws) return null;
-          return XLSX.utils.sheet_to_json(ws);
-        };
+        setSyncStatus('syncing');
+        setSyncMessage('Đang nạp và đồng bộ dữ liệu sao lưu...');
 
-        // 1. Production Logs
-        const logsData = getSheetData("Production_Logs");
-        if (logsData) {
-          const importedLogs = (logsData as any[]).map(log => ({
-            ...log,
-            hourlyActuals: log.hourlyActuals ? JSON.parse(log.hourlyActuals) : {},
-            hourlyWorkers: log.hourlyWorkers ? JSON.parse(log.hourlyWorkers) : {}
-          }));
-          setProductionLogs(importedLogs);
-        }
+        let rawBackupData: any = {};
 
-        // 2. Products
-        const productsData = getSheetData("Products");
-        if (productsData) setProducts(productsData as ProductDefinition[]);
+        if (isJsonFile) {
+          // --- Xử lý file JSON Backup ---
+          const text = evt.target?.result as string;
+          rawBackupData = JSON.parse(text);
+        } else {
+          // --- Xử lý file Excel Backup ---
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: "binary" });
 
-        // 3. Monthly Plan
-        const planData = getSheetData("Monthly_Plan");
-        if (planData) {
-          const newPlan: any = {};
-          (planData as any[]).forEach(row => {
-            const ym = row.yearMonth;
-            const pid = row.productId;
-            if (!newPlan[ym]) newPlan[ym] = {};
-            if (!newPlan[ym][pid]) newPlan[ym][pid] = {};
-            for (let d = 1; d <= 31; d++) {
-              const val = row[`day_${d}`];
-              if (val !== undefined && val !== "") {
-                newPlan[ym][pid][d] = Number(val);
+          // Helper chuẩn hóa tên Sheet để tìm kiếm linh hoạt (không phân biệt hoa thường, dấu, khoảng trắng)
+          const normalizeSheetName = (s: string) => 
+            s.toLowerCase().replace(/[\s\-_]+/g, '').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+          const findSheet = (keywords: string[]) => {
+            const sheetNames = wb.SheetNames;
+            for (const name of sheetNames) {
+              const norm = normalizeSheetName(name);
+              if (keywords.some(kw => norm.includes(normalizeSheetName(kw)))) {
+                return wb.Sheets[name];
               }
             }
-          });
-          setMonthlyPlan(newPlan);
+            return null;
+          };
+
+          const getSheetData = (keywords: string[]) => {
+            const ws = findSheet(keywords);
+            if (!ws) return null;
+            return XLSX.utils.sheet_to_json(ws);
+          };
+
+          rawBackupData.productionLogs = getSheetData(["production_logs", "productionlogs", "nhat_ky_ca", "nhatky", "logs"]);
+          rawBackupData.products = getSheetData(["products", "san_pham", "sanpham", "danhmuc"]);
+          rawBackupData.workers = getSheetData(["workers", "nhan_su", "nhansu", "congnhan"]);
+          rawBackupData.attendanceLogs = getSheetData(["attendance_logs", "attendance", "diem_danh", "diemdanh", "chamcong"]);
+          rawBackupData.monthlyTargets = getSheetData(["monthly_targets", "targets", "muc_tieu", "muctieu"]);
+          rawBackupData.monthlyPlan = getSheetData(["monthly_plan", "monthlyplan", "ke_hoach", "kehoach", "plan"]);
+          rawBackupData.gasDailyReports = getSheetData(["gas_daily_reports", "gasdailyreports", "gas", "bep_gas", "bepgas"]);
+          rawBackupData.assemblyDailyReports = getSheetData(["assembly_daily_reports", "assemblydailyreports", "assembly", "lap_rap", "laprap", "dcro"]);
+          rawBackupData.metrics2025 = getSheetData(["metrics_2025", "metrics2025", "2025"]);
+          rawBackupData.metrics2026 = getSheetData(["metrics_2026", "metrics2026", "2026"]);
+          rawBackupData.monthlyScrap = getSheetData(["monthly_scrap", "monthlyscrap", "scrap_thang"]);
+          rawBackupData.weeklyScrap = getSheetData(["weekly_scrap", "weeklyscrap", "scrap_tuan"]);
+          rawBackupData.weeklyDclrError = getSheetData(["weekly_dclr_error", "weeklydclr", "loi_tuan"]);
+          rawBackupData.monthlyDclrError = getSheetData(["monthly_dclr_error", "monthlydclr", "loi_thang"]);
+          rawBackupData.declaredImeis = getSheetData(["declared_imeis", "declaredimeis", "khai_bao_imei", "declared"]);
+          rawBackupData.scannedImeis = getSheetData(["scanned_imeis", "scannedimeis", "quet_imei", "scanned"]);
         }
 
-        // 4. Gas Reports
-        const gasData = getSheetData("Gas_Daily_Reports");
-        if (gasData) setGasDailyReports(gasData as DailyReportRowGas[]);
+        const stats = {
+          logs: 0,
+          products: 0,
+          workers: 0,
+          attendance: 0,
+          planDays: 0,
+          imeis: 0
+        };
 
-        // 5. Assembly Reports
-        const assemblyData = getSheetData("Assembly_Daily_Reports");
-        if (assemblyData) setAssemblyDailyReports(assemblyData as DailyReportRowAssembly[]);
+        // 1. Khôi phục Nhật ký sản xuất (Production Logs)
+        let finalLogs = productionLogs;
+        if (rawBackupData.productionLogs && Array.isArray(rawBackupData.productionLogs)) {
+          const parsedLogs: ProductionLog[] = rawBackupData.productionLogs.map((log: any, idx: number) => ({
+            ...log,
+            id: log.id || `restored_log_${Date.now()}_${idx}`,
+            hourlyActuals: log.hourlyActuals 
+              ? (typeof log.hourlyActuals === 'string' ? JSON.parse(log.hourlyActuals) : log.hourlyActuals) 
+              : {},
+            hourlyWorkers: log.hourlyWorkers 
+              ? (typeof log.hourlyWorkers === 'string' ? JSON.parse(log.hourlyWorkers) : log.hourlyWorkers) 
+              : {}
+          }));
 
-        // 6. Metrics
-        const m2025Data = getSheetData("Metrics_2025");
-        if (m2025Data) setMetrics2025(m2025Data as MonthlyMetric[]);
-        const m2026Data = getSheetData("Metrics_2026");
-        if (m2026Data) setMetrics2026(m2026Data as MonthlyMetric[]);
+          if (restoreMode === 'overwrite') {
+            finalLogs = parsedLogs;
+          } else {
+            // Chế độ Merge: Kết hợp theo ID hoặc (date + shift + line + product)
+            const logMap = new Map<string, ProductionLog>();
+            productionLogs.forEach(l => logMap.set(l.id || `${l.date}_${l.shift}_${l.lineName}_${l.productId}`, l));
+            parsedLogs.forEach(l => logMap.set(l.id || `${l.date}_${l.shift}_${l.lineName}_${l.productId}`, l));
+            finalLogs = Array.from(logMap.values());
+          }
+          setProductionLogs(finalLogs);
+          stats.logs = finalLogs.length;
+        }
 
-        // 7. Others
-        const mScrapData = getSheetData("Monthly_Scrap");
-        if (mScrapData) setMonthlyScrap(mScrapData as MonthlyScrapReport[]);
-        const wScrapData = getSheetData("Weekly_Scrap");
-        if (wScrapData) setWeeklyScrap(wScrapData as WeeklyScrapReport[]);
-        const wErrorData = getSheetData("Weekly_DCLR_Error");
-        if (wErrorData) setWeeklyDclrError(wErrorData as WeeklyDclreErrorRate[]);
-        const mErrorData = getSheetData("Monthly_DCLR_Error");
-        if (mErrorData) setMonthlyDclrError(mErrorData as MonthlyDclreErrorRate[]);
+        // 2. Khôi phục Danh mục sản phẩm (Products)
+        let finalProducts = products;
+        if (rawBackupData.products && Array.isArray(rawBackupData.products)) {
+          const parsedProducts: ProductDefinition[] = rawBackupData.products.map((p: any) => ({
+            id: String(p.id || p.code || ''),
+            name: String(p.name || ''),
+            group: (p.group || 'MLN') as any,
+            code: String(p.code || p.id || ''),
+            factor: Number(p.factor ?? 1),
+            description: String(p.description || ''),
+            price: p.price !== undefined && p.price !== null ? Number(p.price) : undefined
+          }));
 
-        setFormMessage("✅ Đã khôi phục toàn bộ dữ liệu báo cáo từ file Excel thành công!");
-        setTimeout(() => setFormMessage(""), 4000);
+          if (restoreMode === 'overwrite') {
+            finalProducts = parsedProducts;
+          } else {
+            const prodMap = new Map(products.map(p => [p.id, p]));
+            parsedProducts.forEach(p => prodMap.set(p.id, p));
+            finalProducts = Array.from(prodMap.values());
+          }
+          setProducts(finalProducts);
+          stats.products = finalProducts.length;
+        }
+
+        // 3. Khôi phục Nhân sự (Workers)
+        let finalWorkers = workers;
+        if (rawBackupData.workers && Array.isArray(rawBackupData.workers)) {
+          const parsedWorkers: Worker[] = rawBackupData.workers.map((w: any) => ({
+            id: String(w.id || ''),
+            name: String(w.name || ''),
+            division: (w.division || 'RO') as any,
+            type: (w.type || 'OFFICIAL') as any,
+            qrCode: String(w.qrCode || w.id || ''),
+            imageUrl: w.imageUrl || undefined
+          }));
+
+          if (restoreMode === 'overwrite') {
+            finalWorkers = parsedWorkers;
+          } else {
+            const wMap = new Map(workers.map(w => [w.id, w]));
+            parsedWorkers.forEach(w => wMap.set(w.id, w));
+            finalWorkers = Array.from(wMap.values());
+          }
+          setWorkers(finalWorkers);
+          stats.workers = finalWorkers.length;
+        }
+
+        // 4. Khôi phục Điểm danh (Attendance Logs)
+        let finalAttendance = attendanceLogs;
+        if (rawBackupData.attendanceLogs && Array.isArray(rawBackupData.attendanceLogs)) {
+          const parsedAttendance: AttendanceRecord[] = rawBackupData.attendanceLogs.map((a: any, idx: number) => ({
+            id: a.id || `att_${Date.now()}_${idx}`,
+            workerId: String(a.workerId || a.worker_id || ''),
+            date: String(a.date || ''),
+            slot: a.slot || undefined,
+            checkInTime: a.checkInTime || a.check_in_time || '',
+            checkOutTime: a.checkOutTime || a.check_out_time || undefined,
+            scannedDivision: a.scannedDivision || a.scanned_division || undefined
+          }));
+
+          if (restoreMode === 'overwrite') {
+            finalAttendance = parsedAttendance;
+          } else {
+            const attMap = new Map(attendanceLogs.map(a => [a.id || `${a.workerId}_${a.date}_${a.slot}`, a]));
+            parsedAttendance.forEach(a => attMap.set(a.id || `${a.workerId}_${a.date}_${a.slot}`, a));
+            finalAttendance = Array.from(attMap.values());
+          }
+          setAttendanceLogs(finalAttendance);
+          stats.attendance = finalAttendance.length;
+        }
+
+        // 5. Khôi phục Mục tiêu NSLĐ (Monthly Targets)
+        let finalTargets = monthlyTargets;
+        if (rawBackupData.monthlyTargets) {
+          const newTargets: Record<string, number> = {};
+          if (Array.isArray(rawBackupData.monthlyTargets)) {
+            rawBackupData.monthlyTargets.forEach((item: any) => {
+              if (item.key && item.targetValue !== undefined) {
+                newTargets[item.key] = Number(item.targetValue);
+              }
+            });
+          } else if (typeof rawBackupData.monthlyTargets === 'object') {
+            Object.assign(newTargets, rawBackupData.monthlyTargets);
+          }
+
+          finalTargets = restoreMode === 'overwrite' ? newTargets : { ...monthlyTargets, ...newTargets };
+          setMonthlyTargets(finalTargets);
+        }
+
+        // 6. Khôi phục Kế hoạch tháng (Monthly Plan)
+        let finalPlan = monthlyPlan;
+        if (rawBackupData.monthlyPlan) {
+          let parsedPlan: any = {};
+          if (Array.isArray(rawBackupData.monthlyPlan)) {
+            rawBackupData.monthlyPlan.forEach((row: any) => {
+              const ym = row.yearMonth;
+              const pid = row.productId;
+              if (ym && pid) {
+                if (!parsedPlan[ym]) parsedPlan[ym] = {};
+                if (!parsedPlan[ym][pid]) parsedPlan[ym][pid] = {};
+                for (let d = 1; d <= 31; d++) {
+                  const val = row[`day_${d}`];
+                  if (val !== undefined && val !== "") {
+                    parsedPlan[ym][pid][d] = Number(val);
+                    stats.planDays++;
+                  }
+                }
+              }
+            });
+          } else if (typeof rawBackupData.monthlyPlan === 'object') {
+            parsedPlan = rawBackupData.monthlyPlan;
+          }
+
+          if (restoreMode === 'overwrite') {
+            finalPlan = parsedPlan;
+          } else {
+            finalPlan = { ...monthlyPlan };
+            Object.keys(parsedPlan).forEach(ym => {
+              if (!finalPlan[ym]) finalPlan[ym] = {};
+              Object.keys(parsedPlan[ym]).forEach(pid => {
+                if (!finalPlan[ym][pid]) finalPlan[ym][pid] = {};
+                finalPlan[ym][pid] = { ...finalPlan[ym][pid], ...parsedPlan[ym][pid] };
+              });
+            });
+          }
+          setMonthlyPlan(finalPlan);
+        }
+
+        // 7. Khôi phục Báo cáo Bếp Gas
+        let finalGas = gasDailyReports;
+        if (rawBackupData.gasDailyReports && Array.isArray(rawBackupData.gasDailyReports)) {
+          finalGas = restoreMode === 'overwrite' 
+            ? rawBackupData.gasDailyReports 
+            : [...gasDailyReports, ...rawBackupData.gasDailyReports.filter((g: any) => !gasDailyReports.some(e => e.id === g.id))];
+          setGasDailyReports(finalGas);
+        }
+
+        // 8. Khôi phục Báo cáo Lắp ráp
+        let finalAssembly = assemblyDailyReports;
+        if (rawBackupData.assemblyDailyReports && Array.isArray(rawBackupData.assemblyDailyReports)) {
+          finalAssembly = restoreMode === 'overwrite' 
+            ? rawBackupData.assemblyDailyReports 
+            : [...assemblyDailyReports, ...rawBackupData.assemblyDailyReports.filter((a: any) => !assemblyDailyReports.some(e => e.id === a.id))];
+          setAssemblyDailyReports(finalAssembly);
+        }
+
+        // 9. Khôi phục Metrics 2025 & 2026
+        let finalMetrics2025 = metrics2025;
+        let finalMetrics2026 = metrics2026;
+        if (rawBackupData.metrics2025 && Array.isArray(rawBackupData.metrics2025)) {
+          finalMetrics2025 = rawBackupData.metrics2025;
+          setMetrics2025(finalMetrics2025);
+        }
+        if (rawBackupData.metrics2026 && Array.isArray(rawBackupData.metrics2026)) {
+          finalMetrics2026 = rawBackupData.metrics2026;
+          setMetrics2026(finalMetrics2026);
+        }
+
+        // 10. Khôi phục Báo cáo phế phẩm & lỗi
+        if (rawBackupData.monthlyScrap && Array.isArray(rawBackupData.monthlyScrap)) setMonthlyScrap(rawBackupData.monthlyScrap);
+        if (rawBackupData.weeklyScrap && Array.isArray(rawBackupData.weeklyScrap)) setWeeklyScrap(rawBackupData.weeklyScrap);
+        if (rawBackupData.weeklyDclrError && Array.isArray(rawBackupData.weeklyDclrError)) setWeeklyDclrError(rawBackupData.weeklyDclrError);
+        if (rawBackupData.monthlyDclrError && Array.isArray(rawBackupData.monthlyDclrError)) setMonthlyDclrError(rawBackupData.monthlyDclrError);
+
+        // 11. Khôi phục Dữ liệu IMEI
+        let finalDeclaredImeis = declaredImeis;
+        let finalScannedImeis = scannedImeis;
+        if (rawBackupData.declaredImeis && Array.isArray(rawBackupData.declaredImeis)) {
+          finalDeclaredImeis = restoreMode === 'overwrite'
+            ? rawBackupData.declaredImeis
+            : [...declaredImeis, ...rawBackupData.declaredImeis.filter((d: any) => !declaredImeis.some(e => e.imei === d.imei))];
+          setDeclaredImeis(finalDeclaredImeis);
+          stats.imeis += finalDeclaredImeis.length;
+        }
+        if (rawBackupData.scannedImeis && Array.isArray(rawBackupData.scannedImeis)) {
+          finalScannedImeis = restoreMode === 'overwrite'
+            ? rawBackupData.scannedImeis
+            : [...scannedImeis, ...rawBackupData.scannedImeis.filter((s: any) => !scannedImeis.some(e => e.id === s.id || e.imei === s.imei))];
+          setScannedImeis(finalScannedImeis);
+        }
+
+        // 12. Tự động đồng bộ và tính toán lại các chỉ số lịch sử từ Nhật ký đã phục hồi
+        if (finalLogs.length > 0) {
+          syncHistoricalMetricsWithLogs(finalLogs);
+        }
+
+        // 13. Tự động lưu toàn bộ dữ liệu đã khôi phục vào Storage & Cloud
+        await Promise.allSettled([
+          storage.saveAllProductionLogs(finalLogs),
+          storage.saveAllProducts(finalProducts),
+          storage.saveAllWorkers(finalWorkers),
+          storage.saveAllAttendanceLogs(finalAttendance),
+          storage.saveMonthlyPlan(finalPlan),
+          storage.saveMonthlyTargets(finalTargets),
+          storage.saveMonthlyMetrics(2025, finalMetrics2025),
+          storage.saveMonthlyMetrics(2026, finalMetrics2026),
+          storage.saveGasDailyReports(finalGas),
+          storage.saveAssemblyDailyReports(finalAssembly),
+          storage.saveDeclaredImeis(finalDeclaredImeis),
+          storage.saveScannedImeis(finalScannedImeis)
+        ]);
+
+        setSyncStatus(isSupabaseConfigured ? 'synced' : 'local');
+        setSyncMessage(isSupabaseConfigured ? 'Đã khôi phục và lưu lên Cloud' : 'Đã khôi phục và lưu vào bộ nhớ máy');
+        setFormMessage(`🎉 Khôi phục dữ liệu thành công (${restoreMode === 'overwrite' ? 'Ghi đè' : 'Hợp nhất'}): ${finalLogs.length} nhật ký ca, ${finalProducts.length} sản phẩm, ${finalWorkers.length} nhân sự, ${finalAttendance.length} điểm danh!`);
+        setTimeout(() => setFormMessage(""), 5000);
 
       } catch (err) {
-        console.error(err);
-        setFormMessage("❌ Lỗi khôi phục dữ liệu từ file Excel! Vui lòng kiểm tra định dạng file.");
-        setTimeout(() => setFormMessage(""), 4000);
+        console.error("Lỗi khôi phục backup:", err);
+        setSyncStatus('error');
+        setSyncMessage('Lỗi khôi phục dữ liệu');
+        setFormMessage("❌ Lỗi khôi phục dữ liệu từ file sao lưu! Vui lòng kiểm tra định dạng file (.xlsx, .xls, .json).");
+        setTimeout(() => setFormMessage(""), 4500);
       }
       e.target.value = '';
     };
-    reader.readAsBinaryString(file);
+
+    if (isJsonFile) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsBinaryString(file);
+    }
   };
 
   // --- TRANG PHÂN TÍCH AI (GEMINI BACKEND CALL) ---
@@ -4180,8 +6102,8 @@ const [isScrolled, setIsScrolled] = useState(false);
     }
   }, [activeTab]);
 
-  // Keep track of the last processed date to detect when the date changes (initially empty so it triggers on mount)
-  const lastProcessedDateRef = useRef<string>("");
+  // Keep track of the last processed date to detect when the date changes
+  const lastProcessedDateRef = useRef<string>(formDate);
 
   // Auto-fill/update production models when formDate or monthlyPlan changes
   useEffect(() => {
@@ -4206,10 +6128,16 @@ const [isScrolled, setIsScrolled] = useState(false);
 
     const combinedProductIds = Array.from(new Set([...plannedProductIds, ...leftoverPrevProductIds]));
 
-    // If the user changed the date, we fully update/populate the production models based on that day's plan
+    // If the user changed the date, we check if there's already a draft or logs for that day before auto-populating
     if (dateChanged) {
+      const hasDraft = Boolean(getDraftForDateAndShift(formDate, formShift));
+      const hasLogs = productionLogs.some(l => l.date === formDate && l.shift === formShift);
+      if (hasDraft || hasLogs) {
+        return;
+      }
+
       // Reset workers counts to 0 for unsaved days to avoid mixing days
-      const resetSlots = formSlots;
+      const resetSlots = formSlotsRef.current.filter(isValidHourlySlot);
       const initialWorkers: { [slotName: string]: number } = {};
       resetSlots.forEach(s => {
         initialWorkers[s] = 0;
@@ -4224,7 +6152,7 @@ const [isScrolled, setIsScrolled] = useState(false);
           return combinedProductIds.map((prodId, idx) => {
             const planVal = (monthlyPlan[currentYearMonth]?.[prodId]?.[dayNum]) || 0;
             const initialHrs: { [slotName: string]: number } = {};
-            formSlots.forEach(s => {
+            resetSlots.forEach(s => {
               initialHrs[s] = 0;
             });
             return {
@@ -4238,7 +6166,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       } else {
         // Fallback default row
         const initialHrs: { [slotName: string]: number } = {};
-        formSlots.forEach(s => {
+        resetSlots.forEach(s => {
           initialHrs[s] = 0;
         });
         setFormModelItems([
@@ -4252,7 +6180,7 @@ const [isScrolled, setIsScrolled] = useState(false);
       }
     } else {
       // If the date is the same (e.g. they edited plans or something changed in monthlyPlan),
-      // or if there are no planned products, we just synchronize the dailyPlan field for the existing list of items.
+      // we just synchronize the dailyPlan field for the existing list of items.
       setFormModelItems(prev => {
         let changed = false;
         const next = prev.map(item => {
@@ -4266,7 +6194,7 @@ const [isScrolled, setIsScrolled] = useState(false);
         return changed ? next : prev;
       });
     }
-  }, [formDate, monthlyPlan, products, formSlots, productionLogs]);
+  }, [formDate, formShift, monthlyPlan, products]);
 
   const displayTotalActualQty = filterDivision === "MLN" ? formAggregates.totalActualQtyRO : (filterDivision === "BG" ? formAggregates.totalActualQtyBG : formAggregates.totalActualQty);
   const displayTotalEqQty = filterDivision === "MLN" ? formAggregates.totalEqQtyRO : (filterDivision === "BG" ? formAggregates.totalEqQtyBG : formAggregates.totalEqQty);
@@ -4275,6 +6203,12 @@ const [isScrolled, setIsScrolled] = useState(false);
 
   
   return {
+    syncAttendanceToForm,
+    workers,
+    setWorkers,
+    fetchWorkers,
+    attendanceLogs,
+    setAttendanceLogs,
     showHeader,
     isScrolled,
     setActiveTab,
@@ -4481,12 +6415,33 @@ const [isScrolled, setIsScrolled] = useState(false);
     aiError,
     aiAnalysis,
     handleExportFullBackup,
+    handleExportJsonBackup,
     handleImportFullBackup,
+    restoreMode,
+    setRestoreMode,
     deletePlanModal,
     setDeletePlanModal,
     isAddPlanModalOpen,
     selectedProductToAdd,
     pendingPastDate,
-    setPendingPastDate
+    setPendingPastDate,
+    // Supabase Cloud Sync
+    isInitialLoading,
+    syncStatus,
+    syncMessage,
+    refreshFromCloud,
+    isSupabaseConfigured,
+    syncHistoryFromLogs,
+    syncEntireSystem,
+    toastError,
+    setToastError,
+    showToastError,
+    toastSuccess,
+    setToastSuccess,
+    showToastSuccess,
+    handleCommitItemHourly,
+    handleCommitItemDailyPlan,
+    handleCommitWorkerDraft,
+    fetchShiftLogsAndMapToMatrix
   };
 };

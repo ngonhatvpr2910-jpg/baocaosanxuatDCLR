@@ -7,6 +7,7 @@ import { WeeklyReportTab } from './WeeklyReportTab';
 import { ProductsTab } from './ProductsTab';
 import { MonthlyPlanTab } from './MonthlyPlanTab';
 import { LoggingTab } from './LoggingTab';
+import { PersonnelTab } from './PersonnelTab';
 import { ImeiTrackingTab } from './ImeiTrackingTab';
 import { DashboardTab } from './DashboardTab';
 import { useState } from 'react';
@@ -70,7 +71,7 @@ import {
   Lock,
   Unlock,
   History,
-  ScanBarcode, Barcode, List, Search, Filter, Eye, RefreshCw,
+  ScanBarcode, Barcode, List, Search, Filter, Eye, RefreshCw, Cloud, CloudOff,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from "motion/react";
@@ -109,6 +110,12 @@ import {
 import { useAppLogic } from './useAppLogic';
 export default function App() {
   const {
+    syncAttendanceToForm,
+    workers,
+    setWorkers,
+    fetchWorkers,
+    attendanceLogs,
+    setAttendanceLogs,
     showHeader,
     isScrolled,
     setActiveTab,
@@ -315,13 +322,30 @@ export default function App() {
     aiError,
     aiAnalysis,
     handleExportFullBackup,
+    handleExportJsonBackup,
     handleImportFullBackup,
+    restoreMode,
+    setRestoreMode,
     deletePlanModal,
     setDeletePlanModal,
     isAddPlanModalOpen,
     selectedProductToAdd,
     pendingPastDate,
-    setPendingPastDate
+    setPendingPastDate,
+    isInitialLoading,
+    syncStatus,
+    syncMessage,
+    refreshFromCloud,
+    isSupabaseConfigured,
+    syncHistoryFromLogs,
+    syncEntireSystem,
+    toastError,
+    setToastError,
+    toastSuccess,
+    setToastSuccess,
+    handleCommitItemHourly,
+    handleCommitItemDailyPlan,
+    handleCommitWorkerDraft
   } = useAppLogic();
 
   return (
@@ -331,7 +355,7 @@ export default function App() {
         {/* HEADER BAR */}
         <header>
           <div className={`relative w-full max-w-[1800px] mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4 transition-all duration-300 ${isScrolled ? "py-2 min-h-[56px]" : "py-3.5 min-h-[68px]"}`}>
-            {/* Left: Date info & System Status (positioned absolute on md+ or simplified when scrolled, replacing brand identity) */}
+            {/* Left: Date info & System Status */}
             <div className={`flex items-center gap-3 transition-transform duration-300 md:absolute md:left-4 ${isScrolled ? "scale-95" : "scale-100"}`}>
               <div className="bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-300 font-mono flex items-center gap-2 shadow-inner text-xs">
                 <Calendar className="w-4 h-4 text-rose-500" />
@@ -359,8 +383,67 @@ export default function App() {
                 </p>
               )}
             </div>
+
+            {/* Right: Supabase Cloud Database Status */}
+            <div className={`flex items-center gap-2 transition-transform duration-300 md:absolute md:right-4 ${isScrolled ? "scale-95" : "scale-100"}`}>
+              <div
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all select-none shadow-inner ${
+                  syncStatus === 'synced'
+                    ? 'bg-emerald-950/70 border-emerald-700/60 text-emerald-300'
+                    : syncStatus === 'syncing'
+                    ? 'bg-sky-950/70 border-sky-700/60 text-sky-300'
+                    : syncStatus === 'error'
+                    ? 'bg-rose-950/70 border-rose-700/60 text-rose-300'
+                    : 'bg-amber-950/60 border-amber-800/60 text-amber-300'
+                }`}
+                title={syncMessage}
+              >
+                {syncStatus === 'synced' ? (
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                ) : syncStatus === 'syncing' ? (
+                  <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin" />
+                ) : syncStatus === 'error' ? (
+                  <CloudOff className="w-3.5 h-3.5 text-rose-400" />
+                ) : (
+                  <Database className="w-3.5 h-3.5 text-amber-400" />
+                )}
+                <span className="font-semibold text-[11px] hidden lg:inline">
+                  {syncStatus === 'synced'
+                    ? 'Supabase Cloud'
+                    : syncStatus === 'syncing'
+                    ? 'Đang đồng bộ...'
+                    : syncStatus === 'error'
+                    ? 'Lỗi Cloud'
+                    : 'Local Cache'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => refreshFromCloud()}
+                  title="Bấm để tải lại dữ liệu mới nhất từ Cloud"
+                  className="p-1 hover:bg-slate-800/80 rounded transition text-slate-300 hover:text-white"
+                >
+                  <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
           </div>
         </header>
+
+        {/* Global Cloud Sync Notification / Loading Banner */}
+        {isInitialLoading && (
+          <div className="bg-sky-700 text-white text-xs font-medium py-1 px-4 text-center flex items-center justify-center gap-2 animate-fadeIn border-t border-sky-600">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>Đang đồng bộ dữ liệu từ Supabase Database...</span>
+          </div>
+        )}
+        {syncStatus === 'error' && (
+          <div className="bg-amber-900/90 text-amber-100 text-xs py-1 px-4 text-center flex items-center justify-center gap-2 border-t border-amber-700">
+            <span>Chưa kết nối được Supabase, hệ thống đang tự động dùng bộ nhớ máy cục bộ (Offline Mode).</span>
+            <button onClick={() => refreshFromCloud()} className="underline font-bold hover:text-white ml-2">
+              Thử lại
+            </button>
+          </div>
+        )}
 
         {/* SUB-NAVIGATOR (TAB PANEL) */}
         <div className="bg-slate-950/20 border-t border-slate-800/40">
@@ -449,6 +532,20 @@ export default function App() {
               >
                 <FileText className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
                 <span className="tracking-wide">Báo cáo Tuần</span>
+              </button>
+              <button
+                id="tab-personnel"
+                onClick={() => setActiveTab("personnel")}
+                className={`rounded-lg font-semibold transition-all duration-300 flex items-center cursor-pointer ${
+                  isScrolled ? "px-3.5 py-1.5 text-sm gap-2" : "px-5 py-2.5 text-sm gap-2.5"
+                } ${
+                  activeTab === "personnel"
+                    ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20 border border-rose-400 font-black"
+                    : "bg-transparent text-slate-400 hover:text-rose-400 hover:bg-slate-800 border border-transparent"
+                }`}
+              >
+                <Users className={`transition-all duration-300 ${isScrolled ? "w-4.5 h-4.5" : "w-5 h-5"}`} />
+                <span className="tracking-wide">Nhân sự & QR</span>
               </button>
               <button
                 id="tab-history"
@@ -656,6 +753,7 @@ export default function App() {
 
 {activeTab === "logging" && (
     <LoggingTab
+      syncAttendanceToForm={syncAttendanceToForm}
       formMessage={formMessage}
       handleAddLog={handleAddLog}
       formDate={formDate}
@@ -727,6 +825,13 @@ export default function App() {
       setFormDate={setFormDate}
       setFormModelItems={setFormModelItems}
       setFormMessage={setFormMessage}
+      toastError={toastError}
+      setToastError={setToastError}
+      toastSuccess={toastSuccess}
+      setToastSuccess={setToastSuccess}
+      handleCommitItemHourly={handleCommitItemHourly}
+      handleCommitItemDailyPlan={handleCommitItemDailyPlan}
+      handleCommitWorkerDraft={handleCommitWorkerDraft}
     />
   )}
 
@@ -803,23 +908,35 @@ export default function App() {
   )}
 
           {activeTab === "history-data" && (
-    <HistoryDataTab
-      setHistoryYear={setHistoryYear}
-      historyYear={historyYear}
-      metrics2025={metrics2025}
-      processedMetrics2026={processedMetrics2026}
-      updateHistoryMetric={updateHistoryMetric}
-      setFocusedField={setFocusedField}
-      simulatedHistoryMetrics={simulatedHistoryMetrics}
-      selectedYear={selectedYear}
-      yearlyCumulativeCompareData={yearlyCumulativeCompareData}
-      selectedTargetMonth={selectedTargetMonth}
-      setSelectedTargetMonth={setSelectedTargetMonth}
-      monthlyTargets={monthlyTargets}
-      updateMonthlyTarget={updateMonthlyTarget}
-      setMonthlyTargets={setMonthlyTargets}
-    />
-  )}
+            <HistoryDataTab
+              setHistoryYear={setHistoryYear}
+              historyYear={historyYear}
+              metrics2025={metrics2025}
+              processedMetrics2026={processedMetrics2026}
+              updateHistoryMetric={updateHistoryMetric}
+              setFocusedField={setFocusedField}
+              simulatedHistoryMetrics={simulatedHistoryMetrics}
+              selectedYear={selectedYear}
+              yearlyCumulativeCompareData={yearlyCumulativeCompareData}
+              selectedTargetMonth={selectedTargetMonth}
+              setSelectedTargetMonth={setSelectedTargetMonth}
+              monthlyTargets={monthlyTargets}
+              updateMonthlyTarget={updateMonthlyTarget}
+              setMonthlyTargets={setMonthlyTargets}
+              productionLogs={productionLogs}
+              syncHistoryFromLogs={syncHistoryFromLogs}
+            />
+          )}
+
+          {activeTab === "personnel" && (
+            <PersonnelTab 
+              workers={workers}
+              setWorkers={setWorkers}
+              fetchWorkers={fetchWorkers}
+              attendanceLogs={attendanceLogs}
+              setAttendanceLogs={setAttendanceLogs}
+            />
+          )}
 
           {/* ACTIVE TAB: AI ADVISOR */}
           {activeTab === "analytics" && (
@@ -832,11 +949,25 @@ export default function App() {
   )}
 
           {activeTab === "system-data" && (
-    <SystemDataTab
-      handleExportFullBackup={handleExportFullBackup}
-      handleImportFullBackup={handleImportFullBackup}
-    />
-  )}
+            <SystemDataTab
+              handleExportFullBackup={handleExportFullBackup}
+              handleExportJsonBackup={handleExportJsonBackup}
+              handleImportFullBackup={handleImportFullBackup}
+              restoreMode={restoreMode}
+              setRestoreMode={setRestoreMode}
+              syncEntireSystem={syncEntireSystem}
+              syncStatus={syncStatus}
+              syncMessage={syncMessage}
+              isSupabaseConfigured={isSupabaseConfigured}
+              refreshFromCloud={refreshFromCloud}
+              productionLogs={productionLogs}
+              products={products}
+              workers={workers}
+              attendanceLogs={attendanceLogs}
+              declaredImeis={declaredImeis}
+              scannedImeis={scannedImeis}
+            />
+          )}
         </AnimatePresence>
 
       </main>
@@ -1147,6 +1278,42 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Global Toast Thông báo Thành Công Supabase */}
+      {toastSuccess && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-emerald-950/95 border border-emerald-500 text-emerald-100 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md max-w-md animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+          <div className="flex-1 text-xs">
+            <p className="font-bold text-emerald-200">Đã lưu lên Supabase (Enter)</p>
+            <p className="font-mono text-emerald-300 mt-0.5 break-all">{toastSuccess}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastSuccess(null)}
+            className="p-1 hover:bg-emerald-900 rounded text-emerald-300 hover:text-white transition cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Global Toast Thông báo Lỗi Supabase */}
+      {toastError && (
+        <div className="fixed bottom-20 right-6 z-50 flex items-center gap-3 bg-rose-950/95 border border-rose-600 text-rose-100 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md max-w-md animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+          <div className="flex-1 text-xs">
+            <p className="font-bold text-rose-200">Lỗi đồng bộ Supabase</p>
+            <p className="font-mono text-rose-300 mt-0.5 break-all">{toastError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastError(null)}
+            className="p-1 hover:bg-rose-900 rounded text-rose-300 hover:text-white transition cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 

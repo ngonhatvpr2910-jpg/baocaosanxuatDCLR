@@ -130,7 +130,29 @@ export interface DailyReportRowAssembly {
   isSummary?: boolean; // Nếu là hàng tổng hợp tuần (VD: "W22/T6")
 }
 
-// === CẤU TRÚC DỮ LIỆU CHÍNH TÍNH TỔNG 2 DÂY CHUYỀN ===
+// === QUẢN LÝ NHÂN SỰ & QUÉT MÃ QR ===
+export type WorkerType = "OFFICIAL" | "SEASONAL" | "PROBATION"; // Chính thức | Thời vụ | Thử việc
+export type WorkerDivision = "RO" | "BG" | "RMA"; // Lắp ráp | Bếp Gas | RMA
+
+export interface Worker {
+  id: string; // Mã số nhân viên (ví dụ: NV001)
+  name: string; // Họ và tên
+  division: WorkerDivision; // Bộ phận
+  type: WorkerType; // Loại hình lao động
+  qrCode: string; // Chuỗi mã QR (thường giống id)
+  imageUrl?: string; // Link ảnh nhân sự
+}
+
+export interface AttendanceRecord {
+  id: string;
+  workerId: string;
+  date: string; // YYYY-MM-DD
+  slot?: string; // Tên ca/khung giờ (cũ, giữ lại tránh lỗi type)
+  checkInTime: string; // ISO string
+  checkOutTime?: string; // ISO string (khi quét lần 2)
+  scannedDivision?: WorkerDivision; // Bộ phận quét thực tế (nếu dùng 3 ô quét)
+}
+
 export interface CombinedDailyReportRow {
   date: string; // Ngày ví dụ "01-Jun", "03-Jun", "04-Jun"...
   totalCong: number; // Tổng công (Bếp Gas + Lắp Ráp) = (công Gas + công Thời vụ Gas + RMA Gas) + (công Chính thức Lắp ráp + công Thời vụ Lắp ráp)
