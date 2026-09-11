@@ -11,15 +11,11 @@ import * as storage from './storage';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 export const useAppLogic = () => {
-  // Trạng thái đồng bộ Supabase Cloud
-  const isLoadedRef = useRef(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local' | 'error'>(
-    isSupabaseConfigured ? 'syncing' : 'local'
-  );
-  const [syncMessage, setSyncMessage] = useState<string>(
-    isSupabaseConfigured ? 'Đang kết nối Supabase Cloud...' : 'Chế độ Local (Chưa cấu hình Supabase)'
-  );
+  // Trạng thái lưu trữ cục bộ (Đã tắt đồng bộ Supabase)
+  const isLoadedRef = useRef(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'local' | 'error'>('local');
+  const [syncMessage, setSyncMessage] = useState<string>('Chế độ Lưu trữ Cục bộ (Đã tắt Supabase)');
 
   const [workers, setWorkers] = useState<Worker[]>(() => {
     const saved = localStorage.getItem("sunhouse_workers");
@@ -1641,16 +1637,11 @@ const [isScrolled, setIsScrolled] = useState(false);
     }, 3500);
   }, [productionLogs, syncHistoricalMetricsWithLogs]);
 
-  // Hàm tải / làm mới dữ liệu từ Supabase Cloud
+  // Hàm tải / làm mới dữ liệu từ bộ nhớ cục bộ
   const refreshFromCloud = useCallback(async () => {
     try {
-      if (isSupabaseConfigured) {
-        setSyncStatus('syncing');
-        setSyncMessage('Đang tải dữ liệu từ Supabase Cloud...');
-      } else {
-        setSyncStatus('local');
-        setSyncMessage('Chế độ Local (Chưa cấu hình Supabase)');
-      }
+      setSyncStatus('local');
+      setSyncMessage('Chế độ Lưu trữ Cục bộ (Đã tắt Supabase)');
 
       const [
         loadedWorkers,
@@ -1691,24 +1682,14 @@ const [isScrolled, setIsScrolled] = useState(false);
       if (allDaily.weeklyDclr && allDaily.weeklyDclr.length > 0) setWeeklyDclrError(allDaily.weeklyDclr);
       if (allDaily.monthlyDclr && allDaily.monthlyDclr.length > 0) setMonthlyDclrError(allDaily.monthlyDclr);
 
-      // Để React hoàn tất render dữ liệu mới tải từ Cloud trước khi kích hoạt cờ lưu trữ tự động
-      setTimeout(() => {
-        isLoadedRef.current = true;
-      }, 400);
+      isLoadedRef.current = true;
       setIsInitialLoading(false);
-
-      if (isSupabaseConfigured) {
-        setSyncStatus('synced');
-        setSyncMessage('Đã đồng bộ trực tuyến với Supabase');
-      }
     } catch (err: any) {
-      console.warn('[Supabase] Thông báo khi nạp dữ liệu từ Cloud:', err?.message || err);
-      setTimeout(() => {
-        isLoadedRef.current = true;
-      }, 400);
+      console.warn('[Storage] Lỗi khi nạp dữ liệu cục bộ:', err?.message || err);
+      isLoadedRef.current = true;
       setIsInitialLoading(false);
-      setSyncStatus('error');
-      setSyncMessage('Lỗi kết nối Supabase, đang dùng dữ liệu lưu tạm');
+      setSyncStatus('local');
+      setSyncMessage('Chế độ Lưu trữ Cục bộ');
     }
   }, []);
 

@@ -384,66 +384,28 @@ export default function App() {
               )}
             </div>
 
-            {/* Right: Supabase Cloud Database Status */}
+            {/* Right: Local Storage Database Status */}
             <div className={`flex items-center gap-2 transition-transform duration-300 md:absolute md:right-4 ${isScrolled ? "scale-95" : "scale-100"}`}>
               <div
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all select-none shadow-inner ${
-                  syncStatus === 'synced'
-                    ? 'bg-emerald-950/70 border-emerald-700/60 text-emerald-300'
-                    : syncStatus === 'syncing'
-                    ? 'bg-sky-950/70 border-sky-700/60 text-sky-300'
-                    : syncStatus === 'error'
-                    ? 'bg-rose-950/70 border-rose-700/60 text-rose-300'
-                    : 'bg-amber-950/60 border-amber-800/60 text-amber-300'
-                }`}
-                title={syncMessage}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all select-none shadow-inner bg-slate-900 border-slate-700 text-slate-300"
+                title="Dữ liệu lưu trữ an toàn trong bộ nhớ máy cục bộ (Local Storage)"
               >
-                {syncStatus === 'synced' ? (
-                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-                ) : syncStatus === 'syncing' ? (
-                  <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin" />
-                ) : syncStatus === 'error' ? (
-                  <CloudOff className="w-3.5 h-3.5 text-rose-400" />
-                ) : (
-                  <Database className="w-3.5 h-3.5 text-amber-400" />
-                )}
-                <span className="font-semibold text-[11px] hidden lg:inline">
-                  {syncStatus === 'synced'
-                    ? 'Supabase Cloud'
-                    : syncStatus === 'syncing'
-                    ? 'Đang đồng bộ...'
-                    : syncStatus === 'error'
-                    ? 'Lỗi Cloud'
-                    : 'Local Cache'}
+                <Database className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="font-semibold text-[11px] hidden lg:inline text-slate-200">
+                  Bộ nhớ Cục bộ
                 </span>
                 <button
                   type="button"
                   onClick={() => refreshFromCloud()}
-                  title="Bấm để tải lại dữ liệu mới nhất từ Cloud"
-                  className="p-1 hover:bg-slate-800/80 rounded transition text-slate-300 hover:text-white"
+                  title="Tải lại dữ liệu từ bộ nhớ cục bộ"
+                  className="p-1 hover:bg-slate-800 rounded transition text-slate-400 hover:text-white"
                 >
-                  <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                  <RefreshCw className="w-3 h-3" />
                 </button>
               </div>
             </div>
           </div>
         </header>
-
-        {/* Global Cloud Sync Notification / Loading Banner */}
-        {isInitialLoading && (
-          <div className="bg-sky-700 text-white text-xs font-medium py-1 px-4 text-center flex items-center justify-center gap-2 animate-fadeIn border-t border-sky-600">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>Đang đồng bộ dữ liệu từ Supabase Database...</span>
-          </div>
-        )}
-        {syncStatus === 'error' && (
-          <div className="bg-amber-900/90 text-amber-100 text-xs py-1 px-4 text-center flex items-center justify-center gap-2 border-t border-amber-700">
-            <span>Chưa kết nối được Supabase, hệ thống đang tự động dùng bộ nhớ máy cục bộ (Offline Mode).</span>
-            <button onClick={() => refreshFromCloud()} className="underline font-bold hover:text-white ml-2">
-              Thử lại
-            </button>
-          </div>
-        )}
 
         {/* SUB-NAVIGATOR (TAB PANEL) */}
         <div className="bg-slate-950/20 border-t border-slate-800/40">

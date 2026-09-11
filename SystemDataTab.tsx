@@ -88,10 +88,10 @@ export const SystemDataTab = ({
                 <span className="text-xl font-black text-white mt-1">{declaredImeis.length} <span className="text-xs font-normal text-slate-500">mã</span></span>
               </div>
               <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3.5 flex flex-col">
-                <span className="text-xs text-slate-400 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-purple-400" /> Lưu trữ Cloud</span>
+                <span className="text-xs text-slate-400 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-purple-400" /> Chế độ lưu trữ</span>
                 <span className="text-sm font-bold text-emerald-400 mt-2 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  {isSupabaseConfigured ? 'Supabase Ready' : 'Local Storage'}
+                  Local Storage
                 </span>
               </div>
             </div>
@@ -246,7 +246,7 @@ export const SystemDataTab = ({
               <div className="text-[11px] text-amber-200/70 leading-relaxed space-y-1">
                 <span className="font-bold text-amber-400 block mb-1 uppercase tracking-wider text-[10px]">Lưu ý quan trọng khi khôi phục dữ liệu:</span>
                 <div>• Hệ thống hỗ trợ đọc lại cả các file sao lưu Excel phiên bản cũ và mới nhờ cơ chế tự động ánh xạ thông minh các Sheet.</div>
-                <div>• Sau khi khôi phục thành công, toàn bộ dữ liệu sẽ được lưu tự động vào bộ nhớ trình duyệt và đồng bộ lên Supabase Cloud (nếu đã kết nối).</div>
+                <div>• Sau khi khôi phục thành công, toàn bộ dữ liệu sẽ được lưu tự động và an toàn vào bộ nhớ trình duyệt cục bộ (Local Storage).</div>
                 <div>• Khuyên dùng: Hãy tải xuống một file Backup dự phòng định kỳ hàng tuần hoặc trước khi thực hiện các thay đổi lớn.</div>
               </div>
             </div>
