@@ -13,9 +13,6 @@ import dotenv from "dotenv";
 // Tải biến môi trường
 dotenv.config();
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://rxjvvfoxmdfakcbqskwn.supabase.co";
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_SJSVyW7MUw2FK4fs3IIgGw_0bor6Hzn";
-
 // Khởi tạo Gemini client từ bộ SDK @google/genai mới nhất
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -31,84 +28,9 @@ async function startServer() {
   const PORT = 3000;
 
   // Middleware phân tích JSON
-  app.use(express.json({ limit: "15mb" }));
+  app.use(express.json());
 
   // === CÁC TUYẾN API CHẠY TRÊN SERVER ===
-
-  // Tuyến proxy Supabase an toàn (chạy trên Node.js server, vượt qua mọi rào cản CORS & iframe sandbox của trình duyệt)
-  app.all("/api/supabase/*", async (req: express.Request, res: express.Response): Promise<void> => {
-    // Cho phép CORS đầy đủ
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD");
-    res.setHeader("Access-Control-Allow-Headers", "apikey, authorization, content-type, prefer, range, accept, x-client-info, content-profile");
-    res.setHeader("Access-Control-Expose-Headers", "content-range, content-location, preference-applied");
-
-    if (req.method === "OPTIONS") {
-      res.status(200).end();
-      return;
-    }
-
-    try {
-      const subPath = req.originalUrl.replace(/^\/api\/supabase/, "");
-      const targetUrl = `${SUPABASE_URL}${subPath}`;
-
-      const headers: Record<string, string> = {
-        apikey: (req.headers["apikey"] as string) || SUPABASE_ANON_KEY,
-        authorization: (req.headers["authorization"] as string) || `Bearer ${SUPABASE_ANON_KEY}`,
-      };
-
-      if (req.headers["content-type"]) {
-        headers["content-type"] = req.headers["content-type"] as string;
-      } else if (req.method !== "GET" && req.method !== "HEAD") {
-        headers["content-type"] = "application/json";
-      }
-
-      if (req.headers["prefer"]) headers["prefer"] = req.headers["prefer"] as string;
-      if (req.headers["range"]) headers["range"] = req.headers["range"] as string;
-      if (req.headers["accept"]) headers["accept"] = req.headers["accept"] as string;
-      if (req.headers["content-profile"]) headers["content-profile"] = req.headers["content-profile"] as string;
-      if (req.headers["x-client-info"]) headers["x-client-info"] = req.headers["x-client-info"] as string;
-
-      const fetchOptions: RequestInit = {
-        method: req.method,
-        headers,
-      };
-
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        if (typeof req.body === "string") {
-          fetchOptions.body = req.body;
-        } else if (req.body && (Array.isArray(req.body) ? req.body.length > 0 : Object.keys(req.body).length > 0)) {
-          fetchOptions.body = JSON.stringify(req.body);
-        }
-      }
-
-      const response = await fetch(targetUrl, fetchOptions);
-
-      response.headers.forEach((value, key) => {
-        const lower = key.toLowerCase();
-        if (!["content-encoding", "transfer-encoding", "content-length"].includes(lower)) {
-          res.setHeader(key, value);
-        }
-      });
-
-      res.status(response.status);
-      const text = await response.text();
-      
-      // Đảm bảo kiểu nội dung phù hợp cho response
-      if (!res.getHeader("content-type")) {
-        if (text && (text.startsWith("{") || text.startsWith("["))) {
-          res.setHeader("content-type", "application/json; charset=utf-8");
-        } else {
-          res.setHeader("content-type", "text/plain; charset=utf-8");
-        }
-      }
-
-      res.send(text);
-    } catch (error: any) {
-      console.error("[Supabase Proxy Error]:", error);
-      res.status(502).json({ error: "Lỗi kết nối Supabase qua Server", details: error.message });
-    }
-  });
 
   // API kiểm tra trạng thái hoạt động
   app.get("/api/health", (req, res) => {

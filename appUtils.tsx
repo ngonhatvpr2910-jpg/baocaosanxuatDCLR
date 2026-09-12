@@ -14,29 +14,41 @@ export interface YearWeek {
 
 
 
-// Function to calculate ISO-like weeks but shifted to Friday-Thursday
+// Standard Friday-Thursday production month weeks mapping (4-4-5 / 4-5-4 schedule):
+// Ensures every week belongs to exactly one month, perfectly matching the UI:
+const PRODUCTION_MONTH_WEEKS: Record<number, string[]> = {
+  1: ["W1", "W2", "W3", "W4", "W5"],
+  2: ["W6", "W7", "W8", "W9"],
+  3: ["W10", "W11", "W12", "W13"],
+  4: ["W14", "W15", "W16", "W17", "W18"],
+  5: ["W19", "W20", "W21", "W22"],
+  6: ["W23", "W24", "W25", "W26"],
+  7: ["W27", "W28", "W29", "W30", "W31"],
+  8: ["W32", "W33", "W34", "W35"],
+  9: ["W36", "W37", "W38", "W39", "W40"],
+  10: ["W41", "W42", "W43", "W44"],
+  11: ["W45", "W46", "W47", "W48"],
+  12: ["W49", "W50", "W51", "W52", "W53"]
+};
+
 export function getFridayToThursdayWeeksForMonth(year: number, month: number): string[] {
-  let w1Start = new Date(year, 0, 1);
-  while (w1Start.getDay() !== 5) {
-    w1Start.setDate(w1Start.getDate() - 1);
-  }
-  
-  let weeks: string[] = [];
-  for (let i = 1; i <= 53; i++) {
-    let weekStart = new Date(w1Start);
-    weekStart.setDate(w1Start.getDate() + (i - 1) * 7);
-    let weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    
-    let mStart = new Date(year, month - 1, 1);
-    let mEnd = new Date(year, month, 0); // Last day of month
-    
-    // Check overlap
-    if (weekStart <= mEnd && weekEnd >= mStart) {
-      weeks.push("W" + i);
-    }
-  }
-  return weeks;
+  return PRODUCTION_MONTH_WEEKS[month] || [];
+}
+
+export function getProductionMonthFromWeek(weekStr: string): number {
+  const weekNum = parseInt(weekStr.replace("W", ""), 10);
+  if (weekNum <= 5) return 1;
+  if (weekNum <= 9) return 2;
+  if (weekNum <= 13) return 3;
+  if (weekNum <= 18) return 4;
+  if (weekNum <= 22) return 5;
+  if (weekNum <= 26) return 6;
+  if (weekNum <= 31) return 7;
+  if (weekNum <= 35) return 8;
+  if (weekNum <= 40) return 9;
+  if (weekNum <= 44) return 10;
+  if (weekNum <= 48) return 11;
+  return 12;
 }
 
 export function getStandardYearWeeks(year: number): YearWeek[] {
@@ -171,15 +183,6 @@ export function getShiftSlots(shift: string): string[] {
     "8H - 9H", "9H - 10H", "10H - 11H", "11H - 12H",
     "13H - 14H", "14H - 15H", "15H - 16H", "16H - 17H"
   ];
-}
-
-export function isValidHourlySlot(slot: string): boolean {
-  if (!slot || typeof slot !== "string") return false;
-  const s = slot.trim().toUpperCase();
-  if (s.startsWith("CA ") || s.startsWith("CA_") || s.includes("08:00") || s.includes("17:00") || s.includes("CA HC") || s.includes("CA 1") || s.includes("CA 2") || s.includes("CA 3")) {
-    return false;
-  }
-  return /\d+\s*H/i.test(s) && (s.includes("-") || s.includes("–"));
 }
 
 export function formatSlotLabel(slot: string): string {

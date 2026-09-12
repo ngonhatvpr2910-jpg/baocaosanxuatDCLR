@@ -6,7 +6,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, ReferenceLine, LabelList
 } from 'recharts';
 import {
-  TrendingUp, Users, Award, Calendar, Layers, ChevronRight, Database, PlusCircle, Clock, Sparkles, Info, CheckCircle, RotateCcw, Sliders, Flame, Droplet, FileText, FileCheck, Building, ArrowRight, Calculator, FileSpreadsheet, Trash2, Edit, Pencil, X, Upload, Download, Check, AlertCircle, Zap, DollarSign, Activity, Lock, Unlock, History, ScanBarcode, Barcode, List, Search, Filter, Eye, RefreshCw
+  TrendingUp, TrendingDown, Users, Award, Calendar, Layers, ChevronRight, Database, PlusCircle, Clock, Sparkles, Info, CheckCircle, RotateCcw, Sliders, Flame, Droplet, FileText, FileCheck, Building, ArrowRight, ArrowUpRight, ArrowDownRight, Calculator, FileSpreadsheet, Trash2, Edit, Pencil, X, Upload, Download, Check, AlertCircle, Zap, DollarSign, Activity, Lock, Unlock, History, ScanBarcode, Barcode, List, Search, Filter, Eye, RefreshCw, CheckCircle2, BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 // Types might be needed, let's just use any for now or import from types
@@ -41,6 +41,14 @@ export const DashboardTab = ({
   chartWeeklyScrap,
   displayMonthlyDclrError,
   chartWeeklyDclrError,
+  chartMonthlyDclrError,
+  scrapMonthRange = "recent3",
+  setScrapMonthRange,
+  scrapWeekRange = "past4_plus_month",
+  setScrapWeekRange,
+  past4WeeksList = [],
+  comparison3MonthsData = [],
+  comparison4WeeksData = [],
   scrapQualityMonth,
   setScrapQualityMonth,
   displayWeeklyScrap,
@@ -563,6 +571,242 @@ export const DashboardTab = ({
                 </div>
               </div>
 
+              {/* THANH ĐIỀU KHIỂN & BỘ LỌC ĐỐI CHIẾU QUÁ KHỨ (3 THÁNG GẦN NHẤT & 4 TUẦN GẦN NHẤT) */}
+              <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded-xl text-rose-400">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      Phân Tích & Đối Chiếu Dữ Liệu Quá Khứ
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">
+                        Ít nhất 3 Tháng & 4 Tuần
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Đo lường xu hướng chi phí hàng hỏng (Scrap) và tỉ lệ lỗi thao tác DCLR theo các mốc thời gian đối chiếu
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Selector Tháng Mục Tiêu Đang Xem */}
+                  <div className="flex items-center gap-2 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <span className="text-xs text-slate-400">Tháng:</span>
+                    <select
+                      value={scrapQualityMonth}
+                      onChange={(e) => setScrapQualityMonth(Number(e.target.value))}
+                      className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer"
+                    >
+                      {Array.from({ length: 12 }).map((_, i) => (
+                        <option key={i + 1} value={i + 1} className="bg-slate-900 text-white">
+                          Tháng {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Range Tháng */}
+                  <div className="flex items-center bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 px-2 font-medium">Biểu đồ Tháng:</span>
+                    <button
+                      onClick={() => setScrapMonthRange("recent3")}
+                      className={`px-2.5 py-1 text-xs rounded font-medium transition cursor-pointer ${
+                        scrapMonthRange === "recent3"
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      3 Tháng Gần Nhất
+                    </button>
+                    <button
+                      onClick={() => setScrapMonthRange("recent6")}
+                      className={`px-2.5 py-1 text-xs rounded font-medium transition cursor-pointer ${
+                        scrapMonthRange === "recent6"
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      6 Tháng
+                    </button>
+                    <button
+                      onClick={() => setScrapMonthRange("all")}
+                      className={`px-2.5 py-1 text-xs rounded font-medium transition cursor-pointer ${
+                        scrapMonthRange === "all"
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Cả Năm (12T)
+                    </button>
+                  </div>
+
+                  {/* Range Tuần */}
+                  <div className="flex items-center bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 px-2 font-medium">Biểu đồ Tuần:</span>
+                    <button
+                      onClick={() => setScrapWeekRange("recent4")}
+                      className={`px-2.5 py-1 text-xs rounded font-medium transition cursor-pointer ${
+                        scrapWeekRange === "recent4"
+                          ? "bg-amber-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      4 Tuần Gần Nhất
+                    </button>
+                    <button
+                      onClick={() => setScrapWeekRange("past4_plus_month")}
+                      className={`px-2.5 py-1 text-xs rounded font-medium transition cursor-pointer ${
+                        scrapWeekRange === "past4_plus_month"
+                          ? "bg-amber-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      4 Tuần + T{scrapQualityMonth}
+                    </button>
+                    <button
+                      onClick={() => setScrapWeekRange("all")}
+                      className={`px-2.5 py-1 text-xs rounded font-medium transition cursor-pointer ${
+                        scrapWeekRange === "all"
+                          ? "bg-amber-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Tất Cả Tuần
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* BẢNG PHÂN TÍCH SO SÁNH TRỰC QUAN: 3 THÁNG GẦN NHẤT & 4 TUẦN GẦN NHẤT */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Khối 1: So sánh 3 Tháng Gần Nhất */}
+                <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+                      <h4 className="text-sm font-bold text-white">So Sánh Đối Chiếu 3 Tháng Gần Nhất</h4>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded border border-slate-700/60">
+                      {comparison3MonthsData.length > 0 ? `${comparison3MonthsData[0]?.monthName} - ${comparison3MonthsData[comparison3MonthsData.length - 1]?.monthName}` : "3 Tháng Quá Khứ"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    {comparison3MonthsData.map((item: any) => (
+                      <div key={item.month} className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/70 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">{item.monthName}</span>
+                          {item.scrapMoM !== null && (
+                            <span className={`text-[10px] font-semibold flex items-center gap-0.5 px-1.5 py-0.5 rounded ${
+                              item.scrapMoM <= 0 ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/40" : "bg-rose-950/60 text-rose-400 border border-rose-800/40"
+                            }`}>
+                              {item.scrapMoM <= 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                              {item.scrapMoM > 0 ? `+${item.scrapMoM}%` : `${item.scrapMoM}%`}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block uppercase font-mono">Chi phí Scrap</span>
+                          <span className="text-xs font-mono font-bold text-rose-400 block truncate">
+                            {item.scrapCost > 0 ? `${(item.scrapCost / 1000000).toFixed(2)}M đ` : "0 đ"}
+                          </span>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-850">
+                          <span className="text-[10px] text-slate-400 block uppercase font-mono">Lỗi Thao Tác</span>
+                          <span className="text-xs font-mono font-bold text-amber-400">
+                            {item.errorRate ? `${item.errorRate}%` : "0%"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800/50 flex flex-wrap items-center justify-between text-xs gap-2">
+                    <div>
+                      <span className="text-slate-400 text-[11px]">Trung bình 3 tháng gần nhất:</span>
+                      <span className="ml-2 font-mono font-bold text-rose-400">
+                        {comparison3MonthsData.length > 0
+                          ? `${(comparison3MonthsData.reduce((acc: number, curr: any) => acc + curr.scrapCost, 0) / (comparison3MonthsData.length * 1000000)).toFixed(2)}M đ/tháng`
+                          : "0M đ"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+                      <span>Tỉ lệ lỗi TB:</span>
+                      <span className="font-bold text-amber-400">
+                        {comparison3MonthsData.length > 0
+                          ? `${(comparison3MonthsData.reduce((acc: number, curr: any) => acc + curr.errorRate, 0) / comparison3MonthsData.length).toFixed(2)}%`
+                          : "0%"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Khối 2: So sánh 4 Tuần Gần Nhất */}
+                <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
+                      <h4 className="text-sm font-bold text-white">So Sánh Đối Chiếu 4 Tuần Gần Nhất</h4>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded border border-slate-700/60">
+                      {past4WeeksList.length > 0 ? `${past4WeeksList[0]} - ${past4WeeksList[past4WeeksList.length - 1]}` : "4 Tuần Quá Khứ"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {comparison4WeeksData.map((item: any) => (
+                      <div key={item.week} className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/70 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">{item.week}</span>
+                          {item.scrapWoW !== null && (
+                            <span className={`text-[9px] font-semibold flex items-center px-1 py-0.5 rounded ${
+                              item.scrapWoW <= 0 ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/40" : "bg-rose-950/60 text-rose-400 border border-rose-800/40"
+                            }`}>
+                              {item.scrapWoW <= 0 ? <TrendingDown className="w-2.5 h-2.5 mr-0.5" /> : <TrendingUp className="w-2.5 h-2.5 mr-0.5" />}
+                              {item.scrapWoW > 0 ? `+${item.scrapWoW}%` : `${item.scrapWoW}%`}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block uppercase font-mono">Scrap</span>
+                          <span className="text-[11px] font-mono font-bold text-rose-400 block truncate">
+                            {item.scrapCost > 0 ? `${(item.scrapCost / 1000000).toFixed(2)}M` : "0"}
+                          </span>
+                        </div>
+                        <div className="pt-1 border-t border-slate-850">
+                          <span className="text-[9px] text-slate-400 block uppercase font-mono">Lỗi</span>
+                          <span className="text-[11px] font-mono font-bold text-amber-400">
+                            {item.errorRate ? `${item.errorRate}%` : "0%"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800/50 flex flex-wrap items-center justify-between text-xs gap-2">
+                    <div>
+                      <span className="text-slate-400 text-[11px]">Trung bình 4 tuần gần nhất:</span>
+                      <span className="ml-2 font-mono font-bold text-rose-400">
+                        {comparison4WeeksData.length > 0
+                          ? `${(comparison4WeeksData.reduce((acc: number, curr: any) => acc + curr.scrapCost, 0) / (comparison4WeeksData.length * 1000000)).toFixed(2)}M đ/tuần`
+                          : "0M đ"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+                      <span>Tỉ lệ lỗi TB:</span>
+                      <span className="font-bold text-amber-400">
+                        {comparison4WeeksData.length > 0
+                          ? `${(comparison4WeeksData.reduce((acc: number, curr: any) => acc + curr.errorRate, 0) / comparison4WeeksData.length).toFixed(2)}%`
+                          : "0%"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* BIỂU ĐỒ TRỰC QUAN HÓA CHO DỮ LIỆU ĐÍNH KÈM */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Recharts: Chi phí Hàng Hỏng (Scrap) - Tháng */}
@@ -570,23 +814,24 @@ export const DashboardTab = ({
                   <div className="flex justify-between items-center mb-3">
                     <div>
                       <h4 className="text-sm font-semibold text-white">Theo Dõi Thiệt hại Giá Trị Hàng Hỏng Theo Tháng (Scrap Value)</h4>
-                      <p className="text-xs text-slate-400">Thống kê giá trị tổn hao hàng hỏng của dây chuyền bám sát sổ sách theo từng tháng</p>
+                      <p className="text-xs text-slate-400">Thống kê giá trị tổn hao hàng hỏng của dây chuyền bám sát sổ sách ({scrapMonthRange === "recent3" ? "3 tháng gần nhất" : scrapMonthRange === "recent6" ? "6 tháng gần nhất" : "12 tháng"})</p>
                     </div>
                     <span className="px-2.5 py-1 bg-rose-950 text-rose-450 text-[10px] font-mono border border-rose-800 rounded">
-                      Monthly Scrap Metric
+                      {scrapMonthRange === "recent3" ? "3 Tháng Gần Nhất" : scrapMonthRange === "recent6" ? "6 Tháng" : "12 Tháng"}
                     </span>
                   </div>
                   <div className="h-[380px]">
                     <ResponsiveContainer width="99%" height="100%">
                       <BarChart data={chartMonthlyScrap} margin={{ top: 40, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" interval={0} />
+                        <XAxis dataKey="month" tickFormatter={(v) => scrapMonthRange === "all" ? `T${v}` : `Tháng ${v}`} fontSize={11} stroke="#64748b" interval={0} />
                         <YAxis tickFormatter={(v) => v ? `${(v / 1000000).toFixed(1)}M` : ''} fontSize={11} stroke="#64748b" domain={YAXIS_DOMAIN} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
+                          labelFormatter={(l) => `Tháng ${l}`}
                         />
-                        <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={35}>
+                        <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={scrapMonthRange === "all" ? 22 : 42}>
                           <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
                         </Bar>
                       </BarChart>
@@ -599,10 +844,10 @@ export const DashboardTab = ({
                   <div className="flex justify-between items-center mb-3">
                     <div>
                       <h4 className="text-sm font-semibold text-white">Theo Dõi Hàng Hỏng Theo Tuần</h4>
-                      <p className="text-xs text-slate-400">Tổn thất chi tiết từng tuần sản xuất (VND)</p>
+                      <p className="text-xs text-slate-400">Tổn thất chi tiết từng tuần sản xuất (VND) - Đối chiếu tuần quá khứ</p>
                     </div>
-                    <span className="px-2.5 py-1 bg-rose-950 text-rose-450 text-[10px] font-mono border border-rose-800 rounded">
-                      Weekly Metric
+                    <span className="px-2.5 py-1 bg-amber-950 text-amber-400 text-[10px] font-mono border border-amber-800 rounded">
+                      {scrapWeekRange === "recent4" ? "4 Tuần Gần Nhất" : scrapWeekRange === "past4_plus_month" ? "4 Tuần + T" + scrapQualityMonth : "Toàn Bộ Tuần"}
                     </span>
                   </div>
                   <div className="h-[380px]">
@@ -615,7 +860,7 @@ export const DashboardTab = ({
                           contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }}
                           formatter={(value: any) => [`${Number(value).toLocaleString()} VND`, "Giá trị hàng hỏng"]}
                         />
-                        <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={18}>
+                        <Bar isAnimationActive={false} dataKey="scrapCost" name="Cước phí hỏng (VND)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={chartWeeklyScrap.length > 8 ? 16 : 28}>
                           <LabelList dataKey="scrapCost" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${(Number(v) / 1000000).toFixed(1)}M` : ''} />
                         </Bar>
                       </BarChart>
@@ -626,15 +871,20 @@ export const DashboardTab = ({
               {/* LỖI THAO TÁC BIỂU ĐỒ */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
-                  <h4 className="text-sm font-semibold text-white mb-2">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tháng (%)</h4>
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-semibold text-white">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tháng (%)</h4>
+                    <span className="px-2 py-0.5 bg-slate-800 text-slate-300 text-[10px] font-mono rounded">
+                      {scrapMonthRange === "recent3" ? "3 Tháng Gần Nhất" : scrapMonthRange === "recent6" ? "6 Tháng" : "12 Tháng"}
+                    </span>
+                  </div>
                   <div className="h-[320px]">
                     <ResponsiveContainer width="99%" height="100%">
-                      <LineChart data={displayMonthlyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
+                      <LineChart data={chartMonthlyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="month" tickFormatter={(v) => `Tháng ${v}`} fontSize={11} stroke="#64748b" interval={0} />
+                        <XAxis dataKey="month" tickFormatter={(v) => scrapMonthRange === "all" ? `T${v}` : `Tháng ${v}`} fontSize={11} stroke="#64748b" interval={0} />
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
-                        <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
-                        <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
+                        <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} labelFormatter={(l) => `Tháng ${l}`} />
+                        <Line isAnimationActive={false} type="monotone" connectNulls={true} dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#fbbf24" strokeWidth={3} dot={{ r: 5, fill: "#fbbf24" }} activeDot={{ r: 7 }}>
                           <LabelList dataKey="errorRate" position="top" fill="#fbbf24" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                         </Line>
                       </LineChart>
@@ -643,7 +893,12 @@ export const DashboardTab = ({
                 </div>
 
                 <div className="bg-slate-900/30 p-5 rounded-xl border border-slate-800/60">
-                  <h4 className="text-sm font-semibold text-white mb-2">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tuần (%)</h4>
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-semibold text-white">Tỉ Lệ Lỗi Thao Tác DCLR Theo Tuần (%)</h4>
+                    <span className="px-2 py-0.5 bg-slate-800 text-slate-300 text-[10px] font-mono rounded">
+                      {scrapWeekRange === "recent4" ? "4 Tuần Gần Nhất" : scrapWeekRange === "past4_plus_month" ? "4 Tuần + T" + scrapQualityMonth : "Toàn Bộ Tuần"}
+                    </span>
+                  </div>
                   <div className="h-[320px]">
                     <ResponsiveContainer width="99%" height="100%">
                       <LineChart data={chartWeeklyDclrError} margin={{ top: 40, right: 15, left: -10, bottom: 5 }}>
@@ -651,7 +906,7 @@ export const DashboardTab = ({
                         <XAxis dataKey="week" fontSize={11} stroke="#64748b" interval={0} />
                         <YAxis domain={YAXIS_DOMAIN} tickFormatter={(v) => `${v}%`} fontSize={11} stroke="#64748b" />
                         <Tooltip contentStyle={{ backgroundColor: "#020617", borderColor: "#334155" }} />
-                        <Line isAnimationActive={false} type="monotone" dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
+                        <Line isAnimationActive={false} type="monotone" connectNulls={true} dataKey="errorRate" name="Tỉ lệ lỗi (%)" stroke="#f43f5e" strokeWidth={3} dot={{ r: 5, fill: "#f43f5e" }} activeDot={{ r: 7 }}>
                           <LabelList dataKey="errorRate" position="top" fill="#f43f5e" fontSize={10} fontWeight="semibold" formatter={(v: any) => (v != null && !Number.isNaN(Number(v))) ? `${v}%` : ''} />
                         </Line>
                       </LineChart>
@@ -699,6 +954,7 @@ export const DashboardTab = ({
                           {displayWeeklyScrap.map(w => (
                             <td key={`tb2-w-${w.week}`} className="py-2.5 px-2 text-center border-l border-slate-850 font-semibold">{w.week}</td>
                           ))}
+                          <td className="py-2.5 px-3 text-center border-l border-slate-850 font-bold text-rose-400 bg-rose-950/20 whitespace-nowrap">Tổng Tháng {scrapQualityMonth}</td>
                         </tr>
                         <tr key="scr-week-values" className="border-b border-slate-850 text-slate-350 font-mono">
                           {displayWeeklyScrap.map((w, idx) => (
@@ -712,6 +968,12 @@ export const DashboardTab = ({
                               />
                             </td>
                           ))}
+                          <td className="py-1 px-2 border-l border-slate-850 text-right font-bold text-rose-400 bg-rose-950/10 whitespace-nowrap">
+                            {(() => {
+                              const sum = displayWeeklyScrap.reduce((acc, curr) => acc + (curr.scrapCost || 0), 0);
+                              return sum > 0 ? `${sum.toLocaleString()} đ` : '—';
+                            })()}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -731,6 +993,7 @@ export const DashboardTab = ({
                           {displayWeeklyDclrError.map(w => (
                             <td key={`tb3-w-${w.week}`} className="py-2.5 px-2 text-center border-l border-slate-850 font-semibold">{w.week}</td>
                           ))}
+                          <td className="py-2.5 px-3 text-center border-l border-slate-850 font-bold text-amber-400 bg-amber-950/20 whitespace-nowrap">TB Tháng {scrapQualityMonth}</td>
                         </tr>
                         <tr key="err-week-values" className="border-b border-slate-850 text-slate-350 font-mono">
                           {displayWeeklyDclrError.map((w, idx) => (
@@ -741,7 +1004,7 @@ export const DashboardTab = ({
                             }`}>
                               <input 
                                 type="number" 
-                                step="0.1"
+                                step="0.01"
                                 value={w.errorRate === null || Number.isNaN(Number(w.errorRate)) ? "" : w.errorRate}
                                 onChange={(e) => updateDclrErrorMetric("weekly", w.week, e.target.value)}
                                 className={`w-full min-w-[50px] bg-transparent text-center outline-none p-1 rounded font-semibold text-[11px] hover:bg-slate-800/50 focus:bg-slate-800 ${
@@ -752,6 +1015,14 @@ export const DashboardTab = ({
                               />
                             </td>
                           ))}
+                          <td className="py-1 px-2 border-l border-slate-850 text-center font-bold text-amber-400 bg-amber-950/10 whitespace-nowrap">
+                            {(() => {
+                              const valid = displayWeeklyDclrError.filter(w => w.errorRate !== null);
+                              if (valid.length === 0) return '—';
+                              const avg = valid.reduce((acc, curr) => acc + (curr.errorRate || 0), 0) / valid.length;
+                              return `${avg.toFixed(2)}%`;
+                            })()}
+                          </td>
                         </tr>
                       </tbody>
                     </table>

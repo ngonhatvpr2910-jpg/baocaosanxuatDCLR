@@ -262,23 +262,6 @@ export const MONTHLY_DCLR_ERROR_RATE: MonthlyDclreErrorRate[] = Array.from({ len
 // 6. Dây chuyền Bếp Gas (Blue)
 export const INITIAL_GAS_DAILY_REPORTS: DailyReportRowGas[] = [];
 
-// --- QUẢN LÝ NHÂN SỰ ---
-import { Worker, AttendanceRecord } from './types';
-
-export const INITIAL_WORKERS: Worker[] = [
-  { id: "600001058", name: "Lê Văn Đà", division: "BG", type: "OFFICIAL", qrCode: "600001058" },
-  { id: "600001124", name: "Nguyễn Ngọc Dàng", division: "BG", type: "OFFICIAL", qrCode: "600001124" },
-  { id: "600001134", name: "Lâm Thị Thúy Duy", division: "BG", type: "OFFICIAL", qrCode: "600001134" },
-  { id: "600001087", name: "Võ Minh Nghĩa", division: "BG", type: "OFFICIAL", qrCode: "600001087" },
-  { id: "600000567", name: "Lê Ngọc Phước", division: "BG", type: "OFFICIAL", qrCode: "600000567" },
-  { id: "600000701", name: "Bùi Minh Quang", division: "BG", type: "OFFICIAL", qrCode: "600000701" },
-  { id: "600001053", name: "Nguyễn Lý Hữu Tiến", division: "BG", type: "OFFICIAL", qrCode: "600001053" },
-  { id: "600001144", name: "Trần Văn Tuấn", division: "BG", type: "OFFICIAL", qrCode: "600001144" },
-  { id: "600001130", name: "Nguyễn Thị Vàng", division: "BG", type: "OFFICIAL", qrCode: "600001130" },
-];
-
-export const INITIAL_ATTENDANCE: AttendanceRecord[] = [];
-
 // 7. Dây chuyền Lắp ráp / Line Chính (Green)
 export const INITIAL_ASSEMBLY_DAILY_REPORTS: DailyReportRowAssembly[] = [];
 
